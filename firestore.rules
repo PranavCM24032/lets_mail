@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Let's Mail Multi-Organizer Data Isolation
+    // Only the authenticated organizer matching the document path UID can read or write
+    match /organizers/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: false;
+    }
+  }
+}
