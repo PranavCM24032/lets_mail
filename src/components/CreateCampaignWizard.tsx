@@ -1,12 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
-  AlertTriangle,
   Download,
   ChevronLeft,
   ChevronRight,
   Send,
-  ShieldCheck,
   Bold,
   Italic,
   Underline,
@@ -275,7 +273,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
 
   const duplicateCount = recipients.filter((r) => r.isDuplicate).length;
   const invalidCount = recipients.filter((r) => !r.isValid && !r.isDuplicate).length;
-  const sentToday = Math.max(0, quotaLimit - quotaRemaining);
 
   const currentPreviewRecipient = validRecipients[previewIndex] || {
     id: 'preview',
@@ -378,10 +375,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        {/* LEFT: Recipients + Compose */}
-        <div className="lg:col-span-2 space-y-5">
+    <div className="max-w-6xl mx-auto space-y-5">
           {/* RECIPIENTS */}
           <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
             <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-200">
@@ -973,142 +967,9 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
               </>
             )}
           </section>
-        </div>
-
-        {/* RIGHT: Summary */}
-        <aside className="lg:col-span-1 space-y-4 lg:sticky lg:top-20">
-          <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="font-semibold text-sm text-slate-900">Campaign Summary</h3>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                  validRecipients.length === 0
-                    ? 'bg-slate-100 text-slate-600'
-                    : quotaRemaining <= 0
-                      ? 'bg-amber-50 text-amber-700'
-                      : 'bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                {validRecipients.length === 0
-                  ? 'Waiting for list'
-                  : quotaRemaining <= 0
-                    ? 'Quota reached'
-                    : 'Ready'}
-              </span>
-            </div>
-
-            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden text-xs">
-              <div className="p-3 bg-slate-50 flex justify-between items-center gap-3">
-                <span className="text-slate-500">Sender:</span>
-                <span className="font-mono text-slate-900 font-medium truncate">{organizer.email}</span>
-              </div>
-              <div className="p-3 bg-white flex justify-between items-center gap-3">
-                <span className="text-slate-500">Valid recipients:</span>
-                <span className="font-semibold text-slate-900 tabular-nums">
-                  {validRecipients.length}
-                </span>
-              </div>
-              {duplicateCount > 0 && (
-                <div className="p-3 bg-slate-50 flex justify-between items-center gap-3">
-                  <span className="text-slate-500">Filtered duplicates:</span>
-                  <span className="font-medium text-amber-700 tabular-nums">{duplicateCount}</span>
-                </div>
-              )}
-              {invalidCount > 0 && (
-                <div className="p-3 bg-white flex justify-between items-center gap-3">
-                  <span className="text-slate-500">Invalid addresses:</span>
-                  <span className="font-medium text-rose-700 tabular-nums">{invalidCount}</span>
-                </div>
-              )}
-              <div className="p-3 bg-slate-50 flex justify-between items-center gap-3">
-                <span className="text-slate-500">Subject:</span>
-                <span className="font-medium text-slate-800 truncate max-w-[170px]">{renderedSubject}</span>
-              </div>
-            </div>
-
-            {/* Quota */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500">Daily quota</span>
-                <span className="font-medium text-slate-800 tabular-nums">
-                  {sentToday} sent &middot; {quotaRemaining} left
-                </span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, Math.round((sentToday / Math.max(1, quotaLimit)) * 100))}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-slate-400">
-                Cap {quotaLimit}/day &bull; resets midnight PT
-              </p>
-            </div>
-
-            {/* Missing Auth Warning */}
-            {!hasSendingAuth && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-semibold text-amber-900">Gmail authorization required</p>
-                    <p className="text-amber-700 mt-0.5 leading-relaxed">
-                      Grant Gmail sending permission for{' '}
-                      <strong className="font-mono text-amber-950">{organizer.email}</strong>.
-                    </p>
-                  </div>
-                </div>
-                {onReauthorize && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setIsAuthorizing(true);
-                      try {
-                        await onReauthorize();
-                      } finally {
-                        setIsAuthorizing(false);
-                      }
-                    }}
-                    disabled={isAuthorizing}
-                    className="w-full px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs shadow-xs transition disabled:opacity-50 cursor-pointer"
-                  >
-                    {isAuthorizing ? 'Authorizing...' : 'Authorize Gmail Now'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Quota Warnings */}
-            {quotaRemaining <= 0 ? (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong>Daily quota reached:</strong> 0 emails left today. Resets at midnight
-                  Pacific Time.
-                </div>
-              </div>
-            ) : validRecipients.length > quotaRemaining ? (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <strong>Quota limit:</strong> only {quotaRemaining} of {validRecipients.length}{' '}
-                  recipients will be sent today; the rest stay in the campaign as paused.
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 text-xs text-indigo-900 flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                <div>
-                  Each message is sent individually through your authenticated account.
-                </div>
-              </div>
-            )}
-          </section>
-        </aside>
-      </div>
 
       {/* ACTIONS */}
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
         {/* Test Email */}
         <section className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
           <div className="flex items-start justify-between gap-3">
