@@ -36,11 +36,6 @@ const POPUP_FALLBACK_CODES = new Set([
 ]);
 
 let cachedAccessToken: string | null = null;
-let currentMockUser: OrganizerUser | null = null;
-let mockToken: string | null = null;
-
-// Multi-organizer simulator for testing multiple accounts without logging out of Google
-const MOCK_STORAGE_KEY = 'letsmail_mock_active_user';
 
 const toOrganizerUser = (firebaseUser: User): OrganizerUser => ({
   uid: firebaseUser.uid,
@@ -116,22 +111,6 @@ export const initAuth = (
 ) => {
   handleRedirectResult(onAuthSuccess, onAuthFailure);
 
-  // Check if user previously selected a mock organizer for testing
-  const storedMock = localStorage.getItem(MOCK_STORAGE_KEY);
-  if (storedMock) {
-    try {
-      const parsed = JSON.parse(storedMock) as OrganizerUser;
-      currentMockUser = parsed;
-      mockToken = 'simulated_oauth_token_' + parsed.uid;
-      if (onAuthSuccess) {
-        onAuthSuccess(currentMockUser, mockToken);
-        return () => {};
-      }
-    } catch {
-      localStorage.removeItem(MOCK_STORAGE_KEY);
-    }
-  }
-
   // Restore token from active session if present
   const sessionToken = sessionStorage.getItem(TOKEN_SESSION_KEY);
   if (sessionToken) {
@@ -148,7 +127,7 @@ export const initAuth = (
     } else {
       cachedAccessToken = null;
       sessionStorage.removeItem(TOKEN_SESSION_KEY);
-      if (!currentMockUser && onAuthFailure) {
+      if (onAuthFailure) {
         onAuthFailure();
       }
     }
@@ -157,10 +136,6 @@ export const initAuth = (
 
 export const googleSignIn = async (): Promise<{ user: OrganizerUser; accessToken: string } | null> => {
   try {
-    currentMockUser = null;
-    mockToken = null;
-    localStorage.removeItem(MOCK_STORAGE_KEY);
-
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -194,27 +169,9 @@ export const googleSignIn = async (): Promise<{ user: OrganizerUser; accessToken
 export const logout = async () => {
   await signOut(auth);
   cachedAccessToken = null;
-  currentMockUser = null;
-  mockToken = null;
   try {
     sessionStorage.removeItem(TOKEN_SESSION_KEY);
-    localStorage.removeItem(MOCK_STORAGE_KEY);
   } catch {
     //
-  }
-};
-
-// Switch organizer for testing multi-organizer isolation (Organizer A, Organizer B, Organizer C)
-export const switchMockOrganizer = (organizer: OrganizerUser | null): { user: OrganizerUser | null; token: string | null } => {
-  if (organizer) {
-    currentMockUser = organizer;
-    mockToken = 'simulated_oauth_token_' + organizer.uid;
-    localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(organizer));
-    return { user: organizer, token: mockToken };
-  } else {
-    currentMockUser = null;
-    mockToken = null;
-    localStorage.removeItem(MOCK_STORAGE_KEY);
-    return { user: null, token: null };
   }
 };

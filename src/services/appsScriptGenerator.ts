@@ -106,7 +106,7 @@ function onFormSubmit(e) {
     dataMap["name"] = studentName;
     dataMap["event"] = CONFIG.EVENT_NAME;
     dataMap["participant_id"] = participantId;
-    dataMap["login_link"] = "https://portal.sbjit.edu/checkin/" + participantId;
+    dataMap["login_link"] = dataMap["login_link"] || "";
 
     // Substitute placeholders in subject & body
     let subject = CONFIG.EMAIL_SUBJECT_TEMPLATE;

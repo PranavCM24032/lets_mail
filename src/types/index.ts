@@ -4,7 +4,7 @@ export interface OrganizerUser {
   displayName: string;
   photoURL?: string;
   dispatcherWebhookUrl?: string;
-  connectionMethod?: 'oauth' | 'apps_script_webhook' | 'demo';
+  connectionMethod?: 'oauth' | 'apps_script_webhook';
 }
 
 export interface Recipient {
@@ -102,4 +102,12 @@ export interface EmailTemplate {
   defaultSubject: string;
   htmlContent: string;
   availableTags: string[];
+}
+
+export interface EmailAttachment {
+  name: string;
+  mimeType: string;
+  size: number;
+  // Raw base64 (no data: prefix) used for Gmail API / webhook payloads.
+  base64: string;
 }

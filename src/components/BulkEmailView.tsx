@@ -8,7 +8,7 @@ import {
   ChevronUp,
   History
 } from 'lucide-react';
-import { Campaign, OrganizerUser, Recipient } from '../types';
+import { Campaign, EmailAttachment, OrganizerUser, Recipient } from '../types';
 import { CreateCampaignWizard } from './CreateCampaignWizard';
 
 interface BulkEmailViewProps {
@@ -23,6 +23,7 @@ interface BulkEmailViewProps {
     subject: string;
     bodyHtml: string;
     recipients: Recipient[];
+    attachments?: EmailAttachment[];
   }) => void;
   onReauthorize?: () => Promise<string | null>;
   onRecordSentEmail?: () => void;

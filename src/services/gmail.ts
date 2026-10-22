@@ -1,4 +1,4 @@
-import { Recipient, RecipientDeliveryLog } from '../types';
+import { EmailAttachment, Recipient, RecipientDeliveryLog } from '../types';
 
 export interface SendEmailParams {
   toEmail: string;
@@ -9,13 +9,13 @@ export interface SendEmailParams {
   bodyHtml: string;
   accessToken: string;
   dispatcherWebhookUrl?: string;
+  attachments?: EmailAttachment[];
 }
 
 export interface SendResult {
   success: boolean;
   messageId?: string;
   error?: string;
-  isSimulated?: boolean;
 }
 
 /**
@@ -54,35 +54,68 @@ export function encodeMimeHeader(text: string): string {
  * Builds RFC 2822 compliant MIME email string
  */
 export function buildMimeMessage(params: SendEmailParams): string {
-  const { toEmail, toName, fromEmail, fromName, subject, bodyHtml } = params;
+  const { toEmail, toName, fromEmail, fromName, subject, bodyHtml, attachments = [] } = params;
 
   const formattedTo = toName ? `"${encodeMimeHeader(toName)}" <${toEmail}>` : toEmail;
   const formattedFrom = fromName ? `"${encodeMimeHeader(fromName)}" <${fromEmail}>` : fromEmail;
   const encodedSubject = encodeMimeHeader(subject);
   const dateStr = new Date().toUTCString();
 
-  // Construct a single-part text/html MIME message
-  const mimeLines = [
+  const encodeBody = (html: string): string => {
+    const utf8Bytes = new TextEncoder().encode(html);
+    let binary = '';
+    for (let i = 0; i < utf8Bytes.length; i++) {
+      binary += String.fromCharCode(utf8Bytes[i]);
+    }
+    return btoa(binary);
+  };
+
+  const headers = [
     `From: ${formattedFrom}`,
     `To: ${formattedTo}`,
     `Subject: ${encodedSubject}`,
     `Date: ${dateStr}`,
-    `MIME-Version: 1.0`,
+    `MIME-Version: 1.0`
+  ];
+
+  if (attachments.length === 0) {
+    return [
+      ...headers,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: base64`,
+      '',
+      encodeBody(bodyHtml)
+    ].join('\r\n');
+  }
+
+  const boundary = `----letsmail_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const lines = [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
     `Content-Type: text/html; charset=UTF-8`,
     `Content-Transfer-Encoding: base64`,
     '',
-    // Base64 encode the HTML body
-    (() => {
-      const utf8Bytes = new TextEncoder().encode(bodyHtml);
-      let binary = '';
-      for (let i = 0; i < utf8Bytes.length; i++) {
-        binary += String.fromCharCode(utf8Bytes[i]);
-      }
-      return btoa(binary);
-    })()
+    encodeBody(bodyHtml),
+    ''
   ];
 
-  return mimeLines.join('\r\n');
+  for (const att of attachments) {
+    const safeName = att.name.replace(/["\r\n]/g, '');
+    const headerName = encodeMimeHeader(safeName);
+    const wrapped = att.base64.replace(/(.{76})/g, '$1\r\n').trimEnd();
+    lines.push(`--${boundary}`);
+    lines.push(`Content-Type: ${att.mimeType || 'application/octet-stream'}; name="${headerName}"`);
+    lines.push(`Content-Transfer-Encoding: base64`);
+    lines.push(`Content-Disposition: attachment; filename="${headerName}"`);
+    lines.push('');
+    lines.push(wrapped);
+    lines.push('');
+  }
+
+  lines.push(`--${boundary}--`);
+  return lines.join('\r\n');
 }
 
 /**
@@ -113,7 +146,12 @@ export async function sendEmailViaGmailApi(params: SendEmailParams): Promise<Sen
           fromEmail: params.fromEmail,
           fromName: params.fromName,
           subject: params.subject,
-          bodyHtml: params.bodyHtml
+          bodyHtml: params.bodyHtml,
+          attachments: (params.attachments || []).map((a) => ({
+            name: a.name,
+            mimeType: a.mimeType,
+            base64: a.base64
+          }))
         })
       });
 
@@ -145,22 +183,7 @@ export async function sendEmailViaGmailApi(params: SendEmailParams): Promise<Sen
     }
   }
 
-  // 2. Check if simulated mode (only for the built-in mock organizers / mocked tokens).
-  // Never infer this from the sender address: real users can legitimately have
-  // "test", "demo", "@sbjit.edu", etc. in their email and still expect real delivery.
-  const isDemoOrSimulated =
-    (effectiveToken && effectiveToken.startsWith('simulated_oauth_token_')) ||
-    (effectiveToken && effectiveToken.startsWith('mock_'));
-
-  if (isDemoOrSimulated) {
-    await new Promise((resolve) => setTimeout(resolve, 350 + Math.random() * 250));
-    return {
-      success: true,
-      messageId: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-      isSimulated: true
-    };
-  }
-
+  // 2. Real Gmail API delivery requires an OAuth access token.
   if (!effectiveToken) {
     return {
       success: false,
@@ -232,6 +255,7 @@ export async function executeBulkCampaignSending(options: {
   bodyTemplate: string;
   accessToken: string;
   dispatcherWebhookUrl?: string;
+  attachments?: EmailAttachment[];
   renderContent: (template: string, recipient: Recipient) => string;
   onProgress: (progress: {
     currentIndex: number;
@@ -261,6 +285,7 @@ export async function executeBulkCampaignSending(options: {
     bodyTemplate,
     accessToken,
     dispatcherWebhookUrl,
+    attachments,
     renderContent,
     onProgress,
     shouldPause,
@@ -329,7 +354,8 @@ export async function executeBulkCampaignSending(options: {
       subject: personalizedSubject,
       bodyHtml: personalizedBody,
       accessToken,
-      dispatcherWebhookUrl
+      dispatcherWebhookUrl,
+      attachments
     });
 
     const log: RecipientDeliveryLog = {

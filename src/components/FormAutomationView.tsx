@@ -11,7 +11,6 @@ import {
   Pencil,
   Eye,
   Code2,
-  Play,
   RotateCcw,
   CheckCheck
 } from 'lucide-react';
@@ -84,8 +83,8 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
     automations[0] || null
   );
 
-  // Sub-view within selected trigger: 'edit-message' | 'script' | 'simulator'
-  const [triggerView, setTriggerView] = useState<'edit-message' | 'script' | 'simulator'>('edit-message');
+  // Sub-view within selected trigger: 'edit-message' | 'script'
+  const [triggerView, setTriggerView] = useState<'edit-message' | 'script'>('edit-message');
 
   // Preview toggle in message editor
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
@@ -101,21 +100,16 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // New Form builder state
-  const [newFormName, setNewFormName] = useState('Tech Fest 2026 Student Registration');
-  const [newEventName, setNewEventName] = useState('National Tech Fest 2026');
+  const [newFormName, setNewFormName] = useState('');
+  const [newEventName, setNewEventName] = useState('');
   const [newEmailColumn, setNewEmailColumn] = useState('Email Address');
   const [newNameColumn, setNewNameColumn] = useState('Full Name');
-  const [newParticipantPrefix, setNewParticipantPrefix] = useState('REG-TF-2026-');
+  const [newParticipantPrefix, setNewParticipantPrefix] = useState('REG-');
   const [newSubjectTemplate, setNewSubjectTemplate] = useState('Confirmed: {event} Registration — ID {participant_id}');
   const [newBodyTemplate, setNewBodyTemplate] = useState(MESSAGE_PRESETS[0].body);
 
   // Copy feedback
   const [copiedCode, setCopiedCode] = useState(false);
-
-  // Test simulation state
-  const [simEmail, setSimEmail] = useState(organizer.email || 'attendee@college.edu');
-  const [simName, setSimName] = useState('Kavya Sharma');
-  const [simSuccess, setSimSuccess] = useState<string | null>(null);
 
   // Synchronize edit fields when selectedAutomation changes
   useEffect(() => {
@@ -189,17 +183,19 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
     }
   };
 
+  const hasAutomation = Boolean(selectedAutomation || automations[0]);
+
   const currentDisplay: GoogleFormAutomation = selectedAutomation || automations[0] || {
-    id: 'sample_auto',
+    id: '',
     organizerUid: organizer.uid,
-    formName: editFormName || 'College Event Form',
-    eventName: editEventName || 'College Fest 2026',
-    emailColumn: editEmailColumn || 'Email Address',
-    nameColumn: editNameColumn || 'Full Name',
-    participantIdPrefix: editParticipantPrefix || 'REG-',
-    subject: editSubject || 'Registration Confirmation',
-    templateBody: editBody || '<p>Thank you for registering!</p>',
-    enabled: true,
+    formName: '',
+    eventName: '',
+    emailColumn: '',
+    nameColumn: '',
+    participantIdPrefix: '',
+    subject: '',
+    templateBody: '',
+    enabled: false,
     createdAt: new Date().toISOString(),
     totalSent: 0,
     recentLogs: []
@@ -221,41 +217,16 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
     }
   };
 
-  const handleRunSimulation = () => {
-    const testId = `${currentDisplay.participantIdPrefix}${Math.floor(1000 + Math.random() * 9000)}`;
-    const newLog = {
-      id: `sim_${Date.now()}`,
-      studentEmail: simEmail,
-      studentName: simName,
-      participantId: testId,
-      timestamp: new Date().toLocaleTimeString(),
-      status: 'success' as const,
-      details: `Simulated form submit mapping ${currentDisplay.emailColumn} -> ${simEmail}`
-    };
-
-    const updated: GoogleFormAutomation = {
-      ...currentDisplay,
-      totalSent: currentDisplay.totalSent + 1,
-      lastTriggered: new Date().toISOString(),
-      recentLogs: [newLog, ...(currentDisplay.recentLogs || []).slice(0, 9)]
-    };
-
-    onSaveAutomation(updated);
-    setSelectedAutomation(updated);
-    setSimSuccess(`Verified! Generated ${testId} for ${simName}.`);
-    setTimeout(() => setSimSuccess(null), 3500);
-  };
-
-  // Sample student preview rendering
+  // Recipient values used only to render the live template preview.
   const previewRecipient: Recipient = {
-    id: 'preview_1',
-    email: 'aarav.sharma@sbjit.edu.in',
-    name: 'Aarav Sharma',
+    id: 'preview',
+    email: organizer.email,
+    name: organizer.displayName,
     data: {
-      name: 'Aarav Sharma',
-      email: 'aarav.sharma@sbjit.edu.in',
-      event: editEventName || currentDisplay.eventName || 'Annual Tech Symposium',
-      participant_id: `${editParticipantPrefix || currentDisplay.participantIdPrefix || 'REG-'}1082`
+      name: organizer.displayName,
+      email: organizer.email,
+      event: editEventName || currentDisplay.eventName,
+      participant_id: `${editParticipantPrefix || currentDisplay.participantIdPrefix}PREVIEW`
     },
     isValid: true
   };
@@ -431,7 +402,8 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
 
           {/* Right Column: Active Trigger Detail & Message Editor */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
+            {hasAutomation ? (
+              <div className="bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
               {/* Trigger Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
                 <div>
@@ -482,18 +454,6 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                 >
                   <Code2 className="w-3.5 h-3.5" />
                   <span>Apps Script Code</span>
-                </button>
-
-                <button
-                  onClick={() => setTriggerView('simulator')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer ${
-                    triggerView === 'simulator'
-                      ? 'bg-slate-900 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                  }`}
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>Test Simulator ({currentDisplay.totalSent})</span>
                 </button>
               </div>
 
@@ -666,7 +626,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                       <div className="space-y-2 p-4 rounded-xl bg-slate-50 border border-slate-200">
                         <div className="flex items-center justify-between text-[11px] pb-2 border-b border-slate-200">
                           <span className="font-semibold text-slate-700">Student Inbox Preview:</span>
-                          <span className="text-slate-400">Sample: Aarav Sharma</span>
+                          <span className="text-slate-400">Preview recipient: you</span>
                         </div>
                         <div className="text-xs font-semibold text-slate-900 pb-2">
                           Subject: <span className="font-normal text-slate-700">{renderedPreviewSubject}</span>
@@ -754,85 +714,16 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* SUB-VIEW 3: SIMULATION BOX & RECENT SUBMISSION LOGS */}
-              {triggerView === 'simulator' && (
-                <div className="space-y-4 animate-in fade-in duration-150">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-slate-900">Test Form Submission Simulator</span>
-                      <span className="text-[11px] text-slate-400">Zero quota consumption</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-[11px] text-slate-500 mb-1">Test Student Name</label>
-                        <input
-                          type="text"
-                          value={simName}
-                          onChange={(e) => setSimName(e.target.value)}
-                          placeholder="Student Name"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-slate-500 mb-1">Test Student Email</label>
-                        <input
-                          type="email"
-                          value={simEmail}
-                          onChange={(e) => setSimEmail(e.target.value)}
-                          placeholder="Student Email"
-                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between pt-1">
-                      {simSuccess ? (
-                        <span className="text-emerald-700 text-xs font-medium flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4" /> {simSuccess}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-slate-500">
-                          Simulates the <code>onFormSubmit</code> event and tests variable mapping.
-                        </span>
-                      )}
-                      <button
-                        onClick={handleRunSimulation}
-                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer shadow-2xs"
-                      >
-                        Simulate Submission
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Recent Submissions */}
-                  {currentDisplay.recentLogs && currentDisplay.recentLogs.length > 0 ? (
-                    <div className="space-y-2 pt-2">
-                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                        Recent Submissions Log
-                      </span>
-                      <div className="divide-y divide-slate-100 text-xs bg-white border border-slate-200 rounded-xl px-4">
-                        {currentDisplay.recentLogs.map((log) => (
-                          <div key={log.id} className="py-2.5 flex items-center justify-between">
-                            <div>
-                              <p className="font-medium text-slate-900">
-                                {log.studentName} &bull;{' '}
-                                <span className="font-mono text-slate-500 text-[11px]">{log.studentEmail}</span>
-                              </p>
-                              <p className="text-[11px] text-indigo-600 font-mono font-medium">{log.participantId}</p>
-                            </div>
-                            <span className="text-[11px] text-slate-400 font-medium">{log.timestamp}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-slate-400 text-xs">
-                      No submissions logged yet. Click "Simulate Submission" to test!
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
+            ) : (
+              <div className="h-full min-h-[280px] rounded-2xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-center p-8">
+                <FileText className="w-9 h-9 text-slate-300 mb-2" />
+                <p className="text-sm font-medium text-slate-700">No trigger selected</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                  Create a Google Form trigger to generate its confirmation email template and Apps Script code.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -960,7 +851,8 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
             </button>
             <button
               onClick={handleCreateNew}
-              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-2xs transition cursor-pointer"
+              disabled={!newFormName.trim() || !newEventName.trim()}
+              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium text-xs shadow-2xs transition cursor-pointer"
             >
               Create Trigger &amp; Generate Code
             </button>

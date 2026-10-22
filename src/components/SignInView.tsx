@@ -3,15 +3,8 @@ import {
   Mail,
   ShieldCheck,
   AlertCircle,
-  RefreshCw,
-  ArrowRight,
-  FlaskConical,
-  ChevronDown,
-  ChevronUp,
-  Lock,
-  CheckCircle2
+  RefreshCw
 } from 'lucide-react';
-import { OrganizerUser } from '../types';
 import { consumeRedirectAuthError } from '../services/auth';
 
 const describeAuthError = (code: string, message: string): string => {
@@ -30,20 +23,17 @@ const describeAuthError = (code: string, message: string): string => {
 interface SignInViewProps {
   onGoogleSignIn: () => Promise<any> | void;
   isLoading: boolean;
-  onSelectMockOrganizer: (organizer: OrganizerUser) => void;
 }
 
 export const SignInView: React.FC<SignInViewProps> = ({
   onGoogleSignIn,
-  isLoading,
-  onSelectMockOrganizer
+  isLoading
 }) => {
   const [internalLoading, setInternalLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(() => {
     const stored = consumeRedirectAuthError();
     return stored ? describeAuthError(stored.code, stored.message) : null;
   });
-  const [showSandbox, setShowSandbox] = useState(false);
 
   const activeLoading = isLoading || internalLoading;
 
@@ -218,68 +208,6 @@ export const SignInView: React.FC<SignInViewProps> = ({
                 </p>
               </div>
             </div>
-          </div>
-
-          {/* Sandbox Testing Accordion for Testing Multiple Accounts */}
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
-            <button
-              onClick={() => setShowSandbox((prev) => !prev)}
-              type="button"
-              className="w-full flex items-center justify-between text-xs text-slate-600 hover:text-slate-900 transition font-medium cursor-pointer"
-            >
-              <span className="flex items-center gap-1.5">
-                <FlaskConical className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Multi-Organizer Testing Sandbox</span>
-              </span>
-              {showSandbox ? (
-                <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              )}
-            </button>
-
-            {showSandbox && (
-              <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 animate-in fade-in duration-150">
-                <p className="text-[11px] text-slate-500">
-                  Switch between isolated organizer profiles to test quotas, templates, and campaign isolation:
-                </p>
-                <div className="space-y-1.5">
-                  <button
-                    onClick={() =>
-                      onSelectMockOrganizer({
-                        uid: 'org_techfest',
-                        email: 'techfest.lead@sbjit.edu.in',
-                        displayName: 'Prof. Sarah Chen (Tech Fest)'
-                      })
-                    }
-                    className="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900 text-xs">Prof. Sarah Chen</p>
-                      <p className="text-[11px] text-slate-500 font-mono">techfest.lead@sbjit.edu.in</p>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      onSelectMockOrganizer({
-                        uid: 'org_cultural',
-                        email: 'cultural.coord@sbjit.edu.in',
-                        displayName: 'Rohan Verma (Cultural Club)'
-                      })
-                    }
-                    className="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <p className="font-medium text-slate-900 text-xs">Rohan Verma</p>
-                      <p className="text-[11px] text-slate-500 font-mono">cultural.coord@sbjit.edu.in</p>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Value Props Row */}

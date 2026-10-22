@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
   AlertTriangle,
@@ -6,9 +6,19 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
-  ShieldCheck
+  ShieldCheck,
+  Bold,
+  Italic,
+  Underline,
+  List,
+  ListOrdered,
+  Link2,
+  Eraser,
+  Paperclip,
+  FileText,
+  X
 } from 'lucide-react';
-import { Recipient, EmailTemplate, OrganizerUser } from '../types';
+import { Recipient, EmailTemplate, OrganizerUser, EmailAttachment } from '../types';
 import { parseRecipientFile, ParseResult, generateSampleCsvContent, reprocessWithEmailColumn } from '../services/fileParser';
 import { DEFAULT_TEMPLATES, renderTemplate } from '../services/templateEngine';
 import { sendEmailViaGmailApi } from '../services/gmail';
@@ -27,6 +37,7 @@ interface CreateCampaignWizardProps {
     subject: string;
     bodyHtml: string;
     recipients: Recipient[];
+    attachments?: EmailAttachment[];
   }) => void;
   onCancel: () => void;
   onReauthorize?: () => Promise<string | null>;
@@ -59,12 +70,18 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
 
   // --- Compose State ---
+  const editorRef = useRef<HTMLDivElement>(null);
   const [campaignName, setCampaignName] = useState('College Event Notice');
-  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate>(DEFAULT_TEMPLATES[0]);
+  const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(DEFAULT_TEMPLATES[0]);
   const [subjectTemplate, setSubjectTemplate] = useState(DEFAULT_TEMPLATES[0].defaultSubject);
   const [bodyTemplate, setBodyTemplate] = useState(DEFAULT_TEMPLATES[0].htmlContent);
-  const [composeView, setComposeView] = useState<'editor' | 'preview'>('preview');
+  const [composeView, setComposeView] = useState<'editor' | 'code' | 'preview'>('editor');
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [activeField, setActiveField] = useState<'subject' | 'body'>('body');
+  const [bodyVersion, setBodyVersion] = useState(0);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   // Test email state
   const [testEmail, setTestEmail] = useState(organizer.email);
@@ -72,12 +89,156 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [testFeedback, setTestFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
 
-  // Check if simulated / demo account or has valid sending credentials
-  const isSimulatedAccount = organizer.uid.startsWith('org_');
-
-  const hasSendingAuth = Boolean(accessToken || organizer.dispatcherWebhookUrl || isSimulatedAccount);
+  const hasSendingAuth = Boolean(accessToken || organizer.dispatcherWebhookUrl);
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Keep the contentEditable surface in sync when a template is applied or the
+  // editor is reopened. Typing updates bodyTemplate without touching the DOM.
+  useEffect(() => {
+    if (composeView === 'editor' && editorRef.current) {
+      editorRef.current.innerHTML = bodyTemplate;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeView, bodyVersion]);
+
+  const syncEditor = () => {
+    if (editorRef.current) {
+      setBodyTemplate(editorRef.current.innerHTML);
+    }
+  };
+
+  const runEditorCommand = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    syncEditor();
+  };
+
+  const insertBodyTag = (tag: string) => {
+    setActiveField('body');
+    const wasEditing = composeView === 'editor';
+    setComposeView('editor');
+    const doInsert = () => {
+      editorRef.current?.focus();
+      document.execCommand('insertText', false, tag);
+      syncEditor();
+    };
+    if (wasEditing) {
+      doInsert();
+    } else {
+      window.setTimeout(doInsert, 60);
+    }
+  };
+
+  const insertTag = (tag: string) => {
+    if (activeField === 'subject') {
+      setSubjectTemplate((prev) => `${prev} ${tag}`.trim());
+    } else {
+      insertBodyTag(tag);
+    }
+  };
+
+  const applyTemplate = (tmpl: EmailTemplate | null) => {
+    const nextBody = tmpl ? tmpl.htmlContent : '';
+    const hasCustomContent =
+      bodyTemplate.trim().length > 0 &&
+      bodyTemplate !== nextBody &&
+      bodyTemplate !== selectedTemplate?.htmlContent;
+
+    if (
+      hasCustomContent &&
+      !window.confirm(
+        tmpl
+          ? 'Replace your current email with this template?'
+          : 'Clear the current subject and email body?'
+      )
+    ) {
+      return;
+    }
+
+    setSelectedTemplate(tmpl);
+    setSubjectTemplate(tmpl ? tmpl.defaultSubject : '');
+    setBodyTemplate(nextBody);
+    setBodyVersion((v) => v + 1);
+  };
+
+  const insertLink = () => {
+    const url = window.prompt('Enter the link URL:', 'https://');
+    if (!url) return;
+    runEditorCommand('createLink', url);
+  };
+
+  const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+  const inferMimeType = (name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.docx')) {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    return 'application/msword';
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const readFileAsBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.slice(comma + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleAddAttachments = async (files: FileList | File[]) => {
+    setAttachmentError(null);
+    const incoming = Array.from(files);
+    let totalSize = attachments.reduce((sum, a) => sum + a.size, 0);
+    const next: EmailAttachment[] = [];
+
+    for (const file of incoming) {
+      if (!/\.(pdf|doc|docx)$/i.test(file.name)) {
+        setAttachmentError('Only PDF, DOC, and DOCX files can be attached.');
+        continue;
+      }
+      if (totalSize + file.size > MAX_ATTACHMENT_BYTES) {
+        setAttachmentError(
+          `Attachments are limited to ${formatBytes(MAX_ATTACHMENT_BYTES)} total so Gmail accepts the message.`
+        );
+        break;
+      }
+      try {
+        const base64 = await readFileAsBase64(file);
+        next.push({
+          name: file.name,
+          mimeType: file.type || inferMimeType(file.name),
+          size: file.size,
+          base64
+        });
+        totalSize += file.size;
+      } catch {
+        setAttachmentError(`Could not read "${file.name}".`);
+      }
+    }
+
+    if (next.length > 0) {
+      setAttachments((prev) => [...prev, ...next]);
+    }
+  };
+
+  const removeAttachment = (name: string, size: number) => {
+    setAttachments((prev) => {
+      const index = prev.findIndex((a) => a.name === name && a.size === size);
+      if (index === -1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
 
   // Handle file upload
   const handleFile = async (file: File) => {
@@ -146,15 +307,15 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const allAvailableTags = Array.from(new Set([...standardTags, ...customTags]));
 
   const currentPreviewRecipient = validRecipients[previewIndex] || {
-    id: 'sample',
-    email: organizer.email || 'attendee@college.edu',
-    name: 'Aarav Sharma',
+    id: 'preview',
+    email: organizer.email,
+    name: organizer.displayName,
     data: {
-      name: 'Aarav Sharma',
-      email: organizer.email || 'attendee@college.edu',
-      event: 'National AI Hackathon 2026',
-      participant_id: 'REG-AI-1042',
-      login_link: 'https://portal.sbjit.edu/checkin/1042'
+      name: organizer.displayName,
+      email: organizer.email,
+      event: 'Your event',
+      participant_id: 'PREVIEW',
+      login_link: ''
     },
     isValid: true
   };
@@ -169,7 +330,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
     setTestFeedback(null);
 
     let tokenToUse = accessToken;
-    if (!tokenToUse && !organizer.dispatcherWebhookUrl && !isSimulatedAccount && onReauthorize) {
+    if (!tokenToUse && !organizer.dispatcherWebhookUrl && onReauthorize) {
       try {
         const refreshed = await onReauthorize();
         if (refreshed) tokenToUse = refreshed;
@@ -186,19 +347,18 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
       subject: `[TEST] ${renderedSubject}`,
       bodyHtml: renderedBody,
       accessToken: tokenToUse,
-      dispatcherWebhookUrl: organizer.dispatcherWebhookUrl
+      dispatcherWebhookUrl: organizer.dispatcherWebhookUrl,
+      attachments
     });
 
     setIsSendingTest(false);
     if (result.success) {
-      if (!result.isSimulated && onRecordSentEmail) {
+      if (onRecordSentEmail) {
         onRecordSentEmail();
       }
       setTestFeedback({
         success: true,
-        message: result.isSimulated
-          ? `[Test Mode] Verified RFC-2822 email payload and simulated delivery to ${testEmail}.`
-          : `Live test email dispatched successfully to ${testEmail}! Check your inbox.`
+        message: `Test email dispatched successfully to ${testEmail}. Check your inbox.`
       });
     } else {
       setTestFeedback({
@@ -387,92 +547,57 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
               </span>
             </div>
 
-            {/* Campaign Title & Template Selection */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Campaign Title</label>
-                <input
-                  type="text"
-                  value={campaignName}
-                  onChange={(e) => setCampaignName(e.target.value)}
-                  placeholder="e.g. Hackathon Pass Dispatch 2026"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
-                />
-              </div>
-
-              {/* Template Selector Pills */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-2">Select Template</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {DEFAULT_TEMPLATES.map((tmpl) => {
-                    const isSel = selectedTemplate.id === tmpl.id;
-                    return (
-                      <button
-                        key={tmpl.id}
-                        onClick={() => {
-                          setSelectedTemplate(tmpl);
-                          setSubjectTemplate(tmpl.defaultSubject);
-                          setBodyTemplate(tmpl.htmlContent);
-                        }}
-                        className={`p-3 rounded-lg border text-left transition cursor-pointer ${
-                          isSel
-                            ? 'bg-indigo-50/60 border-indigo-500 text-indigo-950 font-semibold'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
-                        <p className="text-xs font-medium truncate">{tmpl.name}</p>
-                        <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{tmpl.description}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Merge Tag Chips */}
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span className="font-medium text-slate-700">Click to insert placeholder into subject:</span>
-                  <span>Populated from uploaded columns</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {allAvailableTags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => setSubjectTemplate((prev) => prev + ' ' + tag)}
-                      className="px-2 py-0.5 rounded bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 text-[11px] font-mono transition cursor-pointer"
-                    >
-                      + {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Subject Line */}
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">Subject Line</label>
-                <input
-                  type="text"
-                  value={subjectTemplate}
-                  onChange={(e) => setSubjectTemplate(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
-                />
-              </div>
+            {/* Campaign Title */}
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Campaign Title</label>
+              <input
+                type="text"
+                value={campaignName}
+                onChange={(e) => setCampaignName(e.target.value)}
+                placeholder="e.g. Hackathon Pass Dispatch 2026"
+                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
+              />
             </div>
 
-            {/* Editor / Preview Tabs */}
+            {/* Subject Line */}
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Subject Line</label>
+              <input
+                type="text"
+                value={subjectTemplate}
+                onChange={(e) => setSubjectTemplate(e.target.value)}
+                onFocus={() => setActiveField('subject')}
+                placeholder="e.g. Your pass for {event}"
+                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
+              />
+            </div>
+
+            {/* Dynamic Merge Fields */}
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <span className="font-medium text-slate-700">Dynamic fields</span>
+                <span>Populated from your uploaded columns</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {allAvailableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => insertTag(tag)}
+                    className="px-2 py-0.5 rounded bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 text-[11px] font-mono transition cursor-pointer"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Click the subject or the message body first, then a field to insert it there.
+              </p>
+            </div>
+
+            {/* Message Editor / Preview */}
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
-                  <button
-                    onClick={() => setComposeView('preview')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
-                      composeView === 'preview'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Live Preview
-                  </button>
                   <button
                     onClick={() => setComposeView('editor')}
                     className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
@@ -481,7 +606,27 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    HTML Editor
+                    Write
+                  </button>
+                  <button
+                    onClick={() => setComposeView('code')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                      composeView === 'code'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    HTML
+                  </button>
+                  <button
+                    onClick={() => setComposeView('preview')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                      composeView === 'preview'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Preview
                   </button>
                 </div>
 
@@ -510,12 +655,81 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
               </div>
 
               {composeView === 'editor' ? (
-                <textarea
-                  value={bodyTemplate}
-                  onChange={(e) => setBodyTemplate(e.target.value)}
-                  rows={12}
-                  className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:border-indigo-500"
-                />
+                <div>
+                  <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 border-b-0 rounded-t-lg">
+                    {[
+                      { command: 'bold', icon: Bold, label: 'Bold' },
+                      { command: 'italic', icon: Italic, label: 'Italic' },
+                      { command: 'underline', icon: Underline, label: 'Underline' },
+                      { command: 'insertUnorderedList', icon: List, label: 'Bullet list' },
+                      { command: 'insertOrderedList', icon: ListOrdered, label: 'Numbered list' }
+                    ].map(({ command, icon: Icon, label }) => (
+                      <button
+                        key={command}
+                        type="button"
+                        title={label}
+                        aria-label={label}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => runEditorCommand(command)}
+                        className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      title="Insert link"
+                      aria-label="Insert link"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={insertLink}
+                      className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Clear formatting"
+                      aria-label="Clear formatting"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => runEditorCommand('removeFormat')}
+                      className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                    >
+                      <Eraser className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="ml-auto text-[10px] text-slate-400 hidden sm:inline">
+                      Select text, then format
+                    </span>
+                  </div>
+
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onFocus={() => setActiveField('body')}
+                    onInput={(e) => {
+                      setBodyTemplate(e.currentTarget.innerHTML);
+                      if (selectedTemplate) setSelectedTemplate(null);
+                    }}
+                    data-placeholder="Write the email your recipients will receive..."
+                    className="min-h-[280px] max-h-[520px] overflow-y-auto bg-white rounded-b-lg border border-slate-200 p-4 text-sm text-slate-800 leading-relaxed focus:outline-hidden focus:border-indigo-500 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline [&_p]:mb-2"
+                  />
+                </div>
+              ) : composeView === 'code' ? (
+                <div className="space-y-1.5">
+                  <textarea
+                    value={bodyTemplate}
+                    onChange={(e) => {
+                      setBodyTemplate(e.target.value);
+                      if (selectedTemplate) setSelectedTemplate(null);
+                    }}
+                    spellCheck={false}
+                    rows={14}
+                    className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:border-indigo-500"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Raw HTML editor — merge fields like {'{name}'} are replaced per recipient.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
@@ -535,12 +749,127 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
 
                   <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
                     <div
-                      className="bg-white rounded-lg p-4 min-h-[260px] shadow-xs"
+                      className="bg-white rounded-lg p-4 min-h-[260px] shadow-xs [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
                       dangerouslySetInnerHTML={{ __html: renderedBody }}
                     />
                   </div>
                 </div>
               )}
+
+              {/* Optional Templates */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">Optional: start from a template</p>
+                    <p className="text-[11px] text-slate-500">
+                      Templates only fill in the message — everything stays editable.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate(null)}
+                    className={`p-3 rounded-lg border border-dashed text-left transition cursor-pointer ${
+                      selectedTemplate === null
+                        ? 'bg-slate-100 border-slate-400 text-slate-900 font-semibold'
+                        : 'bg-white border-slate-300 text-slate-600 hover:border-slate-400'
+                    }`}
+                  >
+                    <p className="text-xs font-medium truncate">Empty</p>
+                    <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">Start from scratch</p>
+                  </button>
+                  {DEFAULT_TEMPLATES.map((tmpl) => {
+                    const isSel = selectedTemplate?.id === tmpl.id;
+                    return (
+                      <button
+                        key={tmpl.id}
+                        onClick={() => applyTemplate(tmpl)}
+                        className={`p-3 rounded-lg border text-left transition cursor-pointer ${
+                          isSel
+                            ? 'bg-indigo-50/60 border-indigo-500 text-indigo-950 font-semibold'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <p className="text-xs font-medium truncate">{tmpl.name}</p>
+                        <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{tmpl.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Attachments */}
+            <div className="rounded-xl border border-slate-200 p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-900">Attachments (optional)</span>
+                <span className="text-slate-400 text-[11px]">
+                  {attachments.length > 0
+                    ? `${attachments.length} file${attachments.length === 1 ? '' : 's'} · ${formatBytes(
+                        attachments.reduce((sum, a) => sum + a.size, 0)
+                      )}`
+                    : 'PDF, DOC, DOCX'}
+                </span>
+              </div>
+
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    void handleAddAttachments(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+                className="hidden"
+              />
+
+              <button
+                type="button"
+                onClick={() => attachmentInputRef.current?.click()}
+                className="w-full border border-dashed border-slate-300 hover:border-slate-400 rounded-lg p-3 flex items-center justify-center gap-2 text-xs text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>Attach files</span>
+                <span className="text-slate-400 text-[10px]">up to 15 MB total</span>
+              </button>
+
+              {attachmentError && (
+                <p className="text-[11px] text-rose-700">{attachmentError}</p>
+              )}
+
+              {attachments.length > 0 && (
+                <ul className="space-y-1.5">
+                  {attachments.map((att, index) => (
+                    <li
+                      key={`${att.name}-${index}`}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200"
+                    >
+                      <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-800 truncate">{att.name}</p>
+                        <p className="text-[10px] text-slate-400">{formatBytes(att.size)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.name, att.size)}
+                        title="Remove attachment"
+                        aria-label={`Remove ${att.name}`}
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <p className="text-[10px] text-slate-400">
+                Attached to every personalized email in this campaign.
+              </p>
             </div>
 
             {/* Test Email Row */}
@@ -742,6 +1071,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
         subjectPreview={renderedSubject}
         quotaRemaining={quotaRemaining}
         quotaLimit={quotaLimit}
+        attachmentCount={attachments.length}
         onCancel={() => setShowConfirmModal(false)}
         onConfirm={() => {
           setShowConfirmModal(false);
@@ -749,7 +1079,8 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
             name: campaignName,
             subject: subjectTemplate,
             bodyHtml: bodyTemplate,
-            recipients: validRecipients
+            recipients: validRecipients,
+            attachments
           });
         }}
       />

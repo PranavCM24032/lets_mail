@@ -9,6 +9,7 @@ interface ConfirmationModalProps {
   subjectPreview: string;
   quotaRemaining: number;
   quotaLimit?: number;
+  attachmentCount?: number;
   onConfirm: () => void;
   onCancel: () => void;
   isSending?: boolean;
@@ -22,6 +23,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   subjectPreview,
   quotaRemaining,
   quotaLimit = 500,
+  attachmentCount = 0,
   onConfirm,
   onCancel,
   isSending = false
@@ -72,6 +74,12 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
               <span className="text-slate-500">Subject Preview:</span>
               <span className="font-medium text-slate-800 truncate max-w-[240px]">
                 {subjectPreview || '(No subject)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+              <span className="text-slate-500">Attachments:</span>
+              <span className="font-medium text-slate-800 tabular-nums">
+                {attachmentCount > 0 ? `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}` : 'None'}
               </span>
             </div>
             <div className="flex justify-between items-center py-1">

@@ -29,11 +29,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [tempWebhookUrl, setTempWebhookUrl] = useState(organizer.dispatcherWebhookUrl || '');
   const [webhookSavedFeedback, setWebhookSavedFeedback] = useState(false);
 
-  // Only built-in mock organizers are demos; real accounts must never be
-  // treated as simulated based on their email address.
-  const isDemoUser = organizer.uid.startsWith('org_');
-
-  const isTokenMissing = !accessToken && !organizer.dispatcherWebhookUrl && !isDemoUser;
+  const isTokenMissing = !accessToken && !organizer.dispatcherWebhookUrl;
   const sentToday = Math.max(0, quotaLimit - quotaRemaining);
 
   const handleSaveWebhook = (e: React.FormEvent) => {
@@ -166,11 +162,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   <p className="text-[10px] font-mono text-slate-500 truncate max-w-[110px]">
                     {organizer.email}
                   </p>
-                  {isDemoUser && (
-                    <span className="text-[9px] font-medium px-1 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                      Demo
-                    </span>
-                  )}
                 </div>
               </div>
 

@@ -32,7 +32,7 @@ src/
   App.tsx                      Auth lifecycle, tab switch, workspace load, bulk dispatch
   types/index.ts               Shared domain types
   services/
-    auth.ts                    Firebase init, Google popup sign-in, mock organizers, token cache
+    auth.ts                    Firebase init, Google popup sign-in, token cache
     gmail.ts                   MIME build + single send + sequential bulk loop
     storage.ts                 Per-organizer localStorage store (quota/campaigns/automations)
     fileParser.ts              CSV/XLSX/XLS -> Recipient[] with column detection
@@ -40,9 +40,9 @@ src/
     appsScriptGenerator.ts     Generates Google Form Apps Script code
   components/
     TopHeader.tsx              App header: 2 tabs, quota, webhook modal, auth actions
-    SignInView.tsx             Signed-out page + mock-organizer sandbox
-    BulkEmailView.tsx          "Upload & Bulk Email" tab: wizard + past-campaign table
-    CreateCampaignWizard.tsx   3-step wizard (file -> compose -> review)
+    SignInView.tsx             Signed-out page with Google sign-in
+    BulkEmailView.tsx          "Upload & Bulk Email" tab: composer + past-campaign table
+    CreateCampaignWizard.tsx   Single-page upload, compose, and dispatch composer
     ConfirmationModal.tsx      Dispatch confirmation dialog
     BulkSendingModal.tsx       Live-progress overlay during dispatch
     FormAutomationView.tsx     Google Form tab: triggers, template editor, generated Apps Script
@@ -74,15 +74,13 @@ FormAutomationView -> (services only)
 ## Data flow
 
 ### 1. Boot and authentication
-1. `initAuth` restores a mock organizer from `localStorage['letsmail_mock_active_user']`
-   (`src/services/auth.ts:39-52`), otherwise restores the session token
-   (`src/services/auth.ts:55-58`) and subscribes to `onAuthStateChanged` (`:60`).
+1. `initAuth` restores the session token (`src/services/auth.ts:55-58`) and subscribes
+   to `onAuthStateChanged` (`:60`).
 2. `App` turns the Firebase user into `OrganizerUser`, reads
    `localStorage['letsmail_webhook_<uid>']`, and stores the access token in state
    (`src/App.tsx:74-86`).
 3. When `organizer` changes, `App` builds an `OrganizerStorage` and loads today's quota,
-   campaigns, and automations; it seeds a demo automation if none exist
-   (`src/App.tsx:94-153`).
+   campaigns, and automations (`src/App.tsx:94-113`).
 4. Signed-out users see `SignInView` (`src/App.tsx:292-305`). Google sign-in uses a popup
    with the single scope `gmail.send` (`src/services/auth.ts:17-23,83-117`). The access token
    is cached in memory and `sessionStorage` (`:96-98`).
@@ -95,14 +93,13 @@ FormAutomationView -> (services only)
 4. Step 2: template pills + `{name}` / `{event}` / `{participant_id}` / `{login_link}` merge tags;
    preview is `renderTemplate(...)` (`src/services/templateEngine.ts:245-282`).
 5. Step 3: optional re-auth, then `onDispatchCampaign` (`src/components/CreateCampaignWizard.tsx:787-834`).
-6. `App.handleStartBulkSending` resolves a token (OAuth, webhook, or simulated), opens the
+6. `App.handleStartBulkSending` resolves a token (OAuth or webhook), opens the
    modal, and calls `executeBulkCampaignSending` (`src/App.tsx:192-261`).
 7. The engine loops sequentially, renders per-recipient content, calls
    `sendEmailViaGmailApi`, polls pause/cancel, throttles 650 ms, and reports progress
    (`src/services/gmail.ts:229-386`).
-8. Each send picks one of three transports: Apps Script webhook (`gmail.ts:105-146`),
-   simulated mode for demo accounts (`gmail.ts:149-164`), or the Gmail REST API
-   (`gmail.ts:166-224`).
+8. Each send picks one of two transports: Apps Script webhook (`gmail.ts:105-146`) or
+   the Gmail REST API (`gmail.ts:166-224`).
 9. On completion `App` records quota, writes a `Campaign`, and refreshes the list
    (`src/App.tsx:263-288`).
 

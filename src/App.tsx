@@ -7,8 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   initAuth,
   googleSignIn,
-  logout,
-  switchMockOrganizer
+  logout
 } from './services/auth';
 import {
   OrganizerUser,
@@ -17,7 +16,8 @@ import {
   GoogleFormAutomation,
   DailyQuotaUsage,
   RecipientDeliveryLog,
-  NavigationTab
+  NavigationTab,
+  EmailAttachment
 } from './types';
 import { OrganizerStorage } from './services/storage';
 import { renderTemplate } from './services/templateEngine';
@@ -109,48 +109,7 @@ export default function App() {
     setCampaigns(loadedCampaigns);
 
     const loadedAutomations = orgStorage.getFormAutomations();
-    // Seed default automation if empty for immediate exploration
-    if (loadedAutomations.length === 0) {
-      const defaultAuto: GoogleFormAutomation = {
-        id: `form_default_${organizer.uid.slice(0, 8)}`,
-        organizerUid: organizer.uid,
-        formName: 'Spring Tech Fest 2026 Registration',
-        eventName: 'Annual College Tech Fest 2026',
-        emailColumn: 'Email Address',
-        nameColumn: 'Full Name',
-        participantIdPrefix: 'REG-TF-',
-        subject: 'Confirmed: {event} Registration — ID {participant_id}',
-        templateBody: `<p>Dear <strong>{name}</strong>,</p>
-<p>Your registration for <strong>{event}</strong> has been successfully recorded in our event sheet!</p>
-<p>Your official attendee ID is: <strong style="color: #4f46e5; font-family: monospace;">{participant_id}</strong></p>
-<p>See you at the campus auditorium!</p>`,
-        enabled: true,
-        createdAt: new Date().toISOString(),
-        totalSent: 12,
-        recentLogs: [
-          {
-            id: 'log_seed_1',
-            studentEmail: 'rohan.deshmukh@sbjit.edu.in',
-            studentName: 'Rohan Deshmukh',
-            participantId: 'REG-TF-1082',
-            timestamp: '10:14 AM',
-            status: 'success'
-          },
-          {
-            id: 'log_seed_2',
-            studentEmail: 'ananya.joshi@sbjit.edu.in',
-            studentName: 'Ananya Joshi',
-            participantId: 'REG-TF-1083',
-            timestamp: '11:02 AM',
-            status: 'success'
-          }
-        ]
-      };
-      orgStorage.saveFormAutomation(defaultAuto);
-      setFormAutomations([defaultAuto]);
-    } else {
-      setFormAutomations(loadedAutomations);
-    }
+    setFormAutomations(loadedAutomations);
   }, [organizer]);
 
   // Handle Google OAuth Sign In
@@ -200,30 +159,23 @@ export default function App() {
     subject: string;
     bodyHtml: string;
     recipients: Recipient[];
+    attachments?: EmailAttachment[];
   }) => {
     if (!organizer || !storage) return;
 
     // Check token availability
     let activeToken = accessToken || sessionStorage.getItem('letsmail_gmail_oauth_token') || '';
-    // Only the built-in mock organizers are simulated. A real signed-in user
-    // (including college addresses like @sbjit.edu) always sends for real.
-    const isSimulatedAccount = organizer.uid.startsWith('org_');
 
     if (!activeToken && !organizer.dispatcherWebhookUrl) {
-      if (isSimulatedAccount) {
-        activeToken = 'simulated_oauth_token_' + organizer.uid;
-        setAccessToken(activeToken);
-      } else {
-        try {
-          const fresh = await handleGoogleSignIn();
-          if (fresh) {
-            activeToken = fresh;
-          } else {
-            return;
-          }
-        } catch {
+      try {
+        const fresh = await handleGoogleSignIn();
+        if (fresh) {
+          activeToken = fresh;
+        } else {
           return;
         }
+      } catch {
+        return;
       }
     }
 
@@ -262,6 +214,7 @@ export default function App() {
       bodyTemplate: campaignData.bodyHtml,
       accessToken: activeToken,
       dispatcherWebhookUrl: organizer.dispatcherWebhookUrl,
+      attachments: campaignData.attachments,
       renderContent: renderTemplate,
       maxSends,
       onProgress: (p) => {
@@ -316,12 +269,6 @@ export default function App() {
       <SignInView
         onGoogleSignIn={handleGoogleSignIn}
         isLoading={isLoadingAuth}
-        onSelectMockOrganizer={(mockUser) => {
-          const res = switchMockOrganizer(mockUser);
-          setOrganizer(res.user);
-          setAccessToken(res.token || '');
-          setCurrentTab('bulk-email');
-        }}
       />
     );
   }

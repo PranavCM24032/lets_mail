@@ -50,8 +50,8 @@ scheduled, contacts, upload, composer, etc.) were pruned; see the baseline commi
 ## Critical flows
 
 ### A. Boot / auth
-`App.tsx:73-91` calls `initAuth` -> mock-user restore (`auth.ts:39-52`) or
-`onAuthStateChanged` (`auth.ts:60`) -> `organizer` set -> workspace load (`App.tsx:94-153`).
+`App.tsx:73-91` calls `initAuth` -> `onAuthStateChanged` (`auth.ts:60`) ->
+`organizer` set -> workspace load (`App.tsx:94-113`).
 Google sign-in: `googleSignIn` popup (`auth.ts:83-117`) requests `gmail.send`
 (`auth.ts:17-20`), caches locally + in `sessionStorage` (`auth.ts:96-98`).
 
@@ -61,8 +61,8 @@ spreadsheet (`fileParser.ts:25-61`) -> step 2 renders templates
 (`templateEngine.ts:245`) -> step 3 `onDispatchCampaign` (`CreateCampaignWizard.tsx:819`) ->
 `App.handleStartBulkSending` (`App.tsx:192-289`) -> `executeBulkCampaignSending`
 (`gmail.ts:229-386`) -> per-recipient `sendEmailViaGmailApi` (`gmail.ts:319`).
-Transport order: webhook (`gmail.ts:105-146`) -> simulated (`gmail.ts:149-164`) ->
-Gmail REST (`gmail.ts:166-224`). Progress drives `BulkSendingModal` via `App.tsx:251-257`.
+Transport order: webhook (`gmail.ts:105-146`) -> Gmail REST (`gmail.ts:166-224`).
+Progress drives `BulkSendingModal` via `App.tsx:251-257`.
 
 ### C. Google Form automation
 `FormAutomationView` creates/saves a `GoogleFormAutomation` (`FormAutomationView.tsx:140-182`)
@@ -71,15 +71,14 @@ Gmail REST (`gmail.ts:166-224`). Progress drives `BulkSendingModal` via `App.tsx
 (`FormAutomationView.tsx:210-214`). The generated script, not this app, sends form emails.
 
 ### D. Quota
-Seeded at 500/day (`storage.ts:24-47`), incremented after a batch (`storage.ts:54-63`,
+Initialized at 500/day (`storage.ts:24-47`), incremented after a batch (`storage.ts:54-63`,
 called from `App.tsx:267`), displayed as `capLimit - sentCount` (`App.tsx:317`).
 Advisory only: the send engine does not stop at the cap.
 
 ## Surfaces
 
 **Internal service API**
-- `auth`: `initAuth`, `googleSignIn`, `logout`, `switchMockOrganizer` (+ `auth` instance,
-  `GMAIL_SEND_SCOPE`)
+- `auth`: `initAuth`, `googleSignIn`, `logout` (+ `auth` instance, `GMAIL_SEND_SCOPE`)
 - `gmail`: `sendEmailViaGmailApi`, `executeBulkCampaignSending`
 - `storage`: `OrganizerStorage` — quota, campaigns, form automations
 - `fileParser`: `parseRecipientFile`, `reprocessWithEmailColumn`, `generateSampleCsvContent`
@@ -89,8 +88,7 @@ Advisory only: the send engine does not stop at the cap.
 
 **Browser storage**
 - `letsmail_v1_<uid>_quota_<YYYY-MM-DD>`, `_campaigns`, `_form_automations` (`storage.ts:3-21`)
-- `letsmail_gmail_oauth_token` (sessionStorage), `letsmail_mock_active_user`,
-  `letsmail_webhook_<uid>` (localStorage)
+- `letsmail_gmail_oauth_token` (sessionStorage), `letsmail_webhook_<uid>` (localStorage)
 
 **External:** Firebase Auth; Google OAuth `gmail.send`; Gmail REST
 `/gmail/v1/users/me/messages/send`; arbitrary Apps Script webhook URL.
@@ -103,19 +101,18 @@ No Firestore, no Gemini, no env vars consumed by `src/`.
 ## Hot spots
 
 1. **`FormAutomationView.tsx` is a 51 KB / 1016-line god-component** with three tabs, an editor,
-   a simulator, and generated-code display in one file.
+   and generated-code display in one file.
 2. **Transport failure semantics diverge.** A webhook network error is reported as success
    (`gmail.ts:139-145`) and the HTTP status is never checked; the REST path does check status
    (`gmail.ts:186-210`). No 429/backoff handling.
-3. **Duplicated simulated-account predicate in four variants:** `App.tsx:202-206`,
-   `TopHeader.tsx:32-36`, `CreateCampaignWizard.tsx:79-83`,
-   `gmail.ts:149-155` — with subtly different matches.
+3. **No server-side workspace state.** Campaigns, automations, and quota live only in browser
+   `localStorage`, so data is not shared across devices or organizers.
 4. **Firestore and Gemini are declared but not implemented**: `firestore.rules` has no caller;
    `@google/genai` and `GEMINI_API_KEY` are unused.
 5. **Quota is advisory, not enforced.** `ConfirmationModal` promises pausing at the cap
    (`ConfirmationModal.tsx:89`); the engine never checks the remaining allowance.
-6. **Demo data is injected into every new workspace** (`App.tsx:112-149`), including two fake
-   student delivery rows.
+6. **Real email delivery depends on a short-lived Gmail token or a user-supplied Apps Script
+   webhook**; there is no backend token refresh or delivery retry.
 7. **Dead transport path:** the `generateAppsScriptSchedulerCode` and personal-dispatcher
    generators were unused and have been removed; scheduling is consequently unimplemented.
 8. **No tests, no error boundary, no CI config.** The only check is `tsc --noEmit`.
