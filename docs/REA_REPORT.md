@@ -33,40 +33,41 @@ No server bootstrap, CLI, or API route exists in the repo despite `express` bein
 Layers: entry (`main.tsx`) -> shell/state (`App.tsx`) -> UI (`src/components`) -> services
 (`src/services`) -> types (`src/types`). Services never import components.
 
-**Live graph**
 ```
 App -> TopHeader, SignInView, BulkEmailView, FormAutomationView, BulkSendingModal
 BulkEmailView -> CreateCampaignWizard -> ConfirmationModal
+FormAutomationView -> (services only)
 ```
 
-**Dead graph (zero importers):** `Navbar`, `Sidebar`, `DashboardView`, `QuotaDashboardView`,
-`ConnectedAccountView`, `CampaignsView`, `ScheduledView`, `SettingsView`, `HistoryView`,
-`GoogleAuthCard`, `UploadView`, `ComposerView`, `ContactsView` — 13 components, ~140 KB.
+The `NavigationTab` type declares nine tabs (`src/types/index.ts:20-29`); only `bulk-email`
+and `form-automation` have a view. The other seven (`overview`, `campaigns`,
+`create-campaign`, `scheduled`, `contacts`, `activity`, `settings`) are unreachable.
 
-The `NavigationTab` type declares nine tabs (`src/types/index.ts:20-29`); seven (`overview`,
-`campaigns`, `create-campaign`, `scheduled`, `contacts`, `activity`, `settings`) are never set.
+Thirteen previously unreferenced legacy components (dashboard, sidebar, history, settings,
+scheduled, contacts, upload, composer, etc.) were pruned; see the baseline commit
+`87d5835` to recover them.
 
 ## Critical flows
 
 ### A. Boot / auth
-`App.tsx:73-91` calls `initAuth` -> mock-user restore (`auth.ts:40-53`) or
-`onAuthStateChanged` (`auth.ts:61`) -> `organizer` set -> workspace load (`App.tsx:94-153`).
-Google sign-in: `googleSignIn` popup (`auth.ts:84-118`) requests `gmail.send`
-(`auth.ts:17-20`), caches locally + in `sessionStorage` (`auth.ts:97-99`).
+`App.tsx:73-91` calls `initAuth` -> mock-user restore (`auth.ts:39-52`) or
+`onAuthStateChanged` (`auth.ts:60`) -> `organizer` set -> workspace load (`App.tsx:94-153`).
+Google sign-in: `googleSignIn` popup (`auth.ts:83-117`) requests `gmail.send`
+(`auth.ts:17-20`), caches locally + in `sessionStorage` (`auth.ts:96-98`).
 
 ### B. Bulk campaign (live)
-TopHeader tab (`TopHeader.tsx:71-83`) -> `BulkEmailView.tsx:95` -> wizard step 1 parses
-spreadsheet (`fileParser.ts:25-61`) -> step 2 renders templates (`templateEngine.ts:245`) ->
-step 3 `onDispatchCampaign` (`CreateCampaignWizard.tsx:787-834`) ->
+TopHeader tab (`TopHeader.tsx:71-83`) -> `BulkEmailView.tsx:91` -> wizard step 1 parses
+spreadsheet (`fileParser.ts:25-61`) -> step 2 renders templates
+(`templateEngine.ts:245`) -> step 3 `onDispatchCampaign` (`CreateCampaignWizard.tsx:819`) ->
 `App.handleStartBulkSending` (`App.tsx:192-289`) -> `executeBulkCampaignSending`
-(`gmail.ts:230-387`) -> per-recipient `sendEmailViaGmailApi` (`gmail.ts:320`).
-Transport order: webhook (`gmail.ts:106-147`) -> simulated (`gmail.ts:150-165`) ->
-Gmail REST (`gmail.ts:167-225`). Progress drives `BulkSendingModal` via `App.tsx:251-257`.
+(`gmail.ts:229-386`) -> per-recipient `sendEmailViaGmailApi` (`gmail.ts:319`).
+Transport order: webhook (`gmail.ts:105-146`) -> simulated (`gmail.ts:149-164`) ->
+Gmail REST (`gmail.ts:166-224`). Progress drives `BulkSendingModal` via `App.tsx:251-257`.
 
 ### C. Google Form automation
 `FormAutomationView` creates/saves a `GoogleFormAutomation` (`FormAutomationView.tsx:140-182`)
--> `OrganizerStorage.saveFormAutomation` (`storage.ts:108-117`) -> "Apps Script Code" renders
-`generateFormAppsScriptCode` (`appsScriptGenerator.ts:6-167`) -> clipboard
+-> `OrganizerStorage.saveFormAutomation` (`storage.ts:103`) -> "Apps Script Code" renders
+`generateFormAppsScriptCode` (`appsScriptGenerator.ts:6`) -> clipboard
 (`FormAutomationView.tsx:210-214`). The generated script, not this app, sends form emails.
 
 ### D. Quota
@@ -77,15 +78,14 @@ Advisory only: the send engine does not stop at the cap.
 ## Surfaces
 
 **Internal service API**
-- `auth`: `initAuth`, `googleSignIn`, `logout`, `switchMockOrganizer`, `GMAIL_SEND_SCOPE`
-  (+ unused `reauthorizeGmail`, `getAccessToken`, `setManualAccessToken`, `auth`)
+- `auth`: `initAuth`, `googleSignIn`, `logout`, `switchMockOrganizer` (+ `auth` instance,
+  `GMAIL_SEND_SCOPE`)
 - `gmail`: `sendEmailViaGmailApi`, `executeBulkCampaignSending`
-- `storage`: `OrganizerStorage` — quota, campaigns, form automations (+ unused scheduled-job
-  methods, `getRemainingDailyQuota`, `clearAllData`)
+- `storage`: `OrganizerStorage` — quota, campaigns, form automations
 - `fileParser`: `parseRecipientFile`, `reprocessWithEmailColumn`, `generateSampleCsvContent`
+  (plus internal `isValidEmail`)
 - `templateEngine`: `DEFAULT_TEMPLATES`, `renderTemplate`
-- `appsScriptGenerator`: `generateFormAppsScriptCode` (live), `generateAppsScriptSchedulerCode`
-  (dead-view only), `generatePersonalDispatcherScript` (unused)
+- `appsScriptGenerator`: `generateFormAppsScriptCode`
 
 **Browser storage**
 - `letsmail_v1_<uid>_quota_<YYYY-MM-DD>`, `_campaigns`, `_form_automations` (`storage.ts:3-21`)
@@ -96,52 +96,53 @@ Advisory only: the send engine does not stop at the cap.
 `/gmail/v1/users/me/messages/send`; arbitrary Apps Script webhook URL.
 No Firestore, no Gemini, no env vars consumed by `src/`.
 
+**Types:** `OrganizerUser`, `Recipient`, `NavigationTab`, `CampaignStatus`,
+`RecipientDeliveryLog`, `Campaign` (`types/index.ts:43`), `GoogleFormAutomation` (`:61`),
+`DailyQuotaUsage` (`:86`), `EmailTemplate` (`:97`).
+
 ## Hot spots
 
 1. **`FormAutomationView.tsx` is a 51 KB / 1016-line god-component** with three tabs, an editor,
    a simulator, and generated-code display in one file.
-2. **Dead mass is larger than the live app.** 13 of 20 components are unreferenced; dead
-   `SettingsView`/`ConnectedAccountView` duplicate the Firestore rules and dispatcher script
-   as string literals.
-3. **Transport failure semantics diverge.** A webhook network error is reported as success
-   (`gmail.ts:140-146`) and the HTTP status is never checked; the REST path does check status
-   (`gmail.ts:187-211`). No 429/backoff handling.
-4. **Auth state claims are inaccurate.** UI text says the token is never persisted in browser
-   storage (`ConnectedAccountView.tsx:124`, `SettingsView.tsx:111`), but it is written to
-   `sessionStorage` (`auth.ts:99`). Both files are dead today.
-5. **Duplicated predicates/helpers:** simulated-account detection in four variants
-   (`App.tsx:202-206`, `TopHeader.tsx:32-36`, `CreateCampaignWizard.tsx:87-91`,
-   `gmail.ts:150-156`); CSV-log export in three copies (`BulkEmailView.tsx:44-63`,
-   `CampaignsView.tsx:39-59`, `HistoryView.tsx:37-57`); dispatcher script in three copies.
-6. **Firestore and Gemini are declared but not implemented**: `firestore.rules` has no caller;
+2. **Transport failure semantics diverge.** A webhook network error is reported as success
+   (`gmail.ts:139-145`) and the HTTP status is never checked; the REST path does check status
+   (`gmail.ts:186-210`). No 429/backoff handling.
+3. **Duplicated simulated-account predicate in four variants:** `App.tsx:202-206`,
+   `TopHeader.tsx:32-36`, `CreateCampaignWizard.tsx:79-83`,
+   `gmail.ts:149-155` — with subtly different matches.
+4. **Firestore and Gemini are declared but not implemented**: `firestore.rules` has no caller;
    `@google/genai` and `GEMINI_API_KEY` are unused.
-7. **Quota is advisory, not enforced.** `ConfirmationModal` promises pausing at the cap
-   (`ConfirmationModal.tsx:89`); the engine never checks `remainingAllowance`.
-8. **Demo data is injected into every new workspace** (`App.tsx:112-149`), including two fake
+5. **Quota is advisory, not enforced.** `ConfirmationModal` promises pausing at the cap
+   (`ConfirmationModal.tsx:89`); the engine never checks the remaining allowance.
+6. **Demo data is injected into every new workspace** (`App.tsx:112-149`), including two fake
    student delivery rows.
-9. **No tests, no error boundary, no CI config.** The only check is `tsc --noEmit`.
-10. **`npm install` currently conflicts**: dev `esbuild@^0.25.0` vs Vite 8 peer
-    `esbuild@^0.27||^0.28`; install requires `--legacy-peer-deps` (repo ships `bun.lock` instead).
+7. **Dead transport path:** the `generateAppsScriptSchedulerCode` and personal-dispatcher
+   generators were unused and have been removed; scheduling is consequently unimplemented.
+8. **No tests, no error boundary, no CI config.** The only check is `tsc --noEmit`.
+9. **`npm install` currently conflicts**: dev `esbuild@^0.25.0` vs Vite 8 peer
+   `esbuild@^0.27||^0.28`; install requires `--legacy-peer-deps` (repo ships `bun.lock` instead).
+10. **Bundled output is a single ~780 KB chunk** (Vite warns > 500 KB); no code splitting.
 
 ## Extension points
 
 - **Add a tab:** extend `NavigationTab` (`types/index.ts:20`), render it in `App.tsx:336-370`,
   add the button in `TopHeader.tsx:71-97`.
 - **Add a template:** push an `EmailTemplate` to `DEFAULT_TEMPLATES`
-  (`templateEngine.ts:3-234`); both wizard and (dead) composer read it.
+  (`templateEngine.ts:3-234`); the wizard is the only consumer.
 - **Add a placeholder alias:** extend the alias branches in `renderTemplate`
   (`templateEngine.ts:269-277`).
-- **Add a transport:** add a branch inside `sendEmailViaGmailApi` (`gmail.ts:92-225`) and a
+- **Add a transport:** add a branch inside `sendEmailViaGmailApi` (`gmail.ts:91-224`) and a
   matching option on `SendEmailParams` (`gmail.ts:3-12`).
-- **Switch persistence to Firestore:** implement the `OrganizerStorage` method surface
-  (`storage.ts:10-161`) behind the same API; `App.tsx` is the only consumer.
-- **Enforce quota:** check `getRemainingDailyQuota()` before each send in
-  `executeBulkCampaignSending` (`gmail.ts:276`) and mark the rest `skipped`.
+- **Switch persistence to Firestore:** reimplement the `OrganizerStorage` surface
+  (`storage.ts:10-118`) behind the same API; `App.tsx` is the only consumer.
+- **Enforce quota:** check the remaining quota before each send in
+  `executeBulkCampaignSending` (`gmail.ts:275`) and mark the rest `skipped`.
 
 ## Verification performed
 
-- `tsc --noEmit` (the repo's `lint`) passes with zero errors before any edit.
-- Install required `npm install --legacy-peer-deps --no-package-lock` due to the Vite/esbuild
-  peer conflict above.
-- No test suite exists to run; `vite build` was attempted after install and its result is
-  reported separately.
+- Baseline committed first (`87d5835`), so the prune is fully reversible.
+- `tsc --noEmit` (the repo's `lint`) passes with zero errors after the prune.
+- `vite build` succeeds; CSS dropped 54.59 kB -> 36.22 kB after dead components were removed.
+- Stale-reference grep for every deleted component and symbol returns no hits (only the
+  unrelated `MailApp.getRemainingDailyQuota()` inside generated Apps Script strings).
+- No test suite exists to run; the live flows were verified statically and by build, not in a browser.

@@ -281,12 +281,3 @@ export function renderTemplate(templateString: string, recipient: Recipient): st
   });
 }
 
-/**
- * Extracts all {variable} placeholder names from template text
- */
-export function extractPlaceholders(text: string): string[] {
-  const matches = text.match(/\{([^{}]+)\}/g) || [];
-  const unique = new Set<string>();
-  matches.forEach((m) => unique.add(m.replace(/^\{|\}$/g, '').trim()));
-  return Array.from(unique);
-}

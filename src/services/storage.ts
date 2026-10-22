@@ -1,4 +1,4 @@
-import { Campaign, DailyQuotaUsage, GoogleFormAutomation, ScheduledJob } from '../types';
+import { Campaign, DailyQuotaUsage, GoogleFormAutomation } from '../types';
 
 const PREFIX = 'letsmail_v1_';
 
@@ -62,11 +62,6 @@ export class OrganizerStorage {
     return usage;
   }
 
-  public getRemainingDailyQuota(): number {
-    const usage = this.getTodayQuota();
-    return Math.max(0, usage.capLimit - usage.sentCount);
-  }
-
   // --- Campaigns Management ---
   public getCampaigns(): Campaign[] {
     const raw = localStorage.getItem(this.getKey('campaigns'));
@@ -119,44 +114,5 @@ export class OrganizerStorage {
   public deleteFormAutomation(id: string): void {
     const list = this.getFormAutomations().filter((a) => a.id !== id);
     localStorage.setItem(this.getKey('form_automations'), JSON.stringify(list));
-  }
-
-  // --- Scheduled Jobs Management ---
-  public getScheduledJobs(): ScheduledJob[] {
-    const raw = localStorage.getItem(this.getKey('scheduled_jobs'));
-    if (!raw) return [];
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  }
-
-  public saveScheduledJob(job: ScheduledJob): void {
-    const list = this.getScheduledJobs();
-    const index = list.findIndex((j) => j.id === job.id);
-    if (index >= 0) {
-      list[index] = job;
-    } else {
-      list.unshift(job);
-    }
-    localStorage.setItem(this.getKey('scheduled_jobs'), JSON.stringify(list));
-  }
-
-  public deleteScheduledJob(id: string): void {
-    const list = this.getScheduledJobs().filter((j) => j.id !== id);
-    localStorage.setItem(this.getKey('scheduled_jobs'), JSON.stringify(list));
-  }
-
-  // --- Wipe this organizer's workspace ---
-  public clearAllData(): void {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(`${PREFIX}${this.uid}_`)) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
   }
 }

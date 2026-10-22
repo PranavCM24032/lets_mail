@@ -58,12 +58,6 @@ export interface Campaign {
   scheduledFor?: string;
 }
 
-export interface FormFieldMapping {
-  formField: string;
-  variableName: string;
-  description?: string;
-}
-
 export interface GoogleFormAutomation {
   id: string;
   organizerUid: string;
@@ -87,20 +81,6 @@ export interface GoogleFormAutomation {
     status: 'success' | 'error';
     details?: string;
   }>;
-}
-
-export interface ScheduledJob {
-  id: string;
-  organizerUid: string;
-  campaignId: string;
-  campaignName: string;
-  scheduledTime: string; // ISO string
-  timeZone: string;
-  status: 'pending' | 'executing' | 'completed' | 'cancelled' | 'paused';
-  createdAt: string;
-  nextRunFormatted: string;
-  recipientCount: number;
-  lastResult?: string;
 }
 
 export interface DailyQuotaUsage {

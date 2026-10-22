@@ -113,26 +113,6 @@ export const googleSignIn = async (): Promise<{ user: OrganizerUser; accessToken
   }
 };
 
-export const reauthorizeGmail = async (): Promise<{ user: OrganizerUser; accessToken: string } | null> => {
-  return await googleSignIn();
-};
-
-export const getAccessToken = async (): Promise<string | null> => {
-  if (currentMockUser && mockToken) {
-    return mockToken;
-  }
-  return cachedAccessToken || sessionStorage.getItem(TOKEN_SESSION_KEY) || null;
-};
-
-export const setManualAccessToken = (token: string) => {
-  cachedAccessToken = token;
-  try {
-    sessionStorage.setItem(TOKEN_SESSION_KEY, token);
-  } catch {
-    //
-  }
-};
-
 export const logout = async () => {
   await signOut(auth);
   cachedAccessToken = null;
