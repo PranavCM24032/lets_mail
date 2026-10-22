@@ -77,7 +77,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [bodyTemplate, setBodyTemplate] = useState(DEFAULT_TEMPLATES[0].htmlContent);
   const [composeView, setComposeView] = useState<'editor' | 'code' | 'preview'>('editor');
   const [previewIndex, setPreviewIndex] = useState(0);
-  const [activeField, setActiveField] = useState<'subject' | 'body'>('body');
   const [bodyVersion, setBodyVersion] = useState(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
@@ -112,30 +111,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
     editorRef.current?.focus();
     document.execCommand(command, false, value);
     syncEditor();
-  };
-
-  const insertBodyTag = (tag: string) => {
-    setActiveField('body');
-    const wasEditing = composeView === 'editor';
-    setComposeView('editor');
-    const doInsert = () => {
-      editorRef.current?.focus();
-      document.execCommand('insertText', false, tag);
-      syncEditor();
-    };
-    if (wasEditing) {
-      doInsert();
-    } else {
-      window.setTimeout(doInsert, 60);
-    }
-  };
-
-  const insertTag = (tag: string) => {
-    if (activeField === 'subject') {
-      setSubjectTemplate((prev) => `${prev} ${tag}`.trim());
-    } else {
-      insertBodyTag(tag);
-    }
   };
 
   const applyTemplate = (tmpl: EmailTemplate | null) => {
@@ -298,13 +273,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const duplicateCount = recipients.filter((r) => r.isDuplicate).length;
   const invalidCount = recipients.filter((r) => !r.isValid && !r.isDuplicate).length;
   const sentToday = Math.max(0, quotaLimit - quotaRemaining);
-
-  // Personalization tags
-  const standardTags = ['{name}', '{email}', '{event}', '{participant_id}', '{login_link}'];
-  const customTags = headers
-    .map((h) => `{${h}}`)
-    .filter((tag) => !standardTags.includes(tag.toLowerCase()));
-  const allAvailableTags = Array.from(new Set([...standardTags, ...customTags]));
 
   const currentPreviewRecipient = validRecipients[previewIndex] || {
     id: 'preview',
@@ -566,32 +534,9 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                 type="text"
                 value={subjectTemplate}
                 onChange={(e) => setSubjectTemplate(e.target.value)}
-                onFocus={() => setActiveField('subject')}
-                placeholder="e.g. Your pass for {event}"
+                placeholder="e.g. Your event pass"
                 className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
               />
-            </div>
-
-            {/* Dynamic Merge Fields */}
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span className="font-medium text-slate-700">Dynamic fields</span>
-                <span>Populated from your uploaded columns</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {allAvailableTags.map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => insertTag(tag)}
-                    className="px-2 py-0.5 rounded bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 text-[11px] font-mono transition cursor-pointer"
-                  >
-                    + {tag}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-slate-400">
-                Click the subject or the message body first, then a field to insert it there.
-              </p>
             </div>
 
             {/* Message Editor / Preview */}
@@ -705,7 +650,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onFocus={() => setActiveField('body')}
                     onInput={(e) => {
                       setBodyTemplate(e.currentTarget.innerHTML);
                       if (selectedTemplate) setSelectedTemplate(null);
@@ -727,7 +671,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:border-indigo-500"
                   />
                   <p className="text-[10px] text-slate-400">
-                    Raw HTML editor — merge fields like {'{name}'} are replaced per recipient.
+                    Raw HTML editor — placeholders like {'{name}'} are filled from the uploaded spreadsheet.
                   </p>
                 </div>
               ) : (
