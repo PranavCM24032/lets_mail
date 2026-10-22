@@ -695,6 +695,33 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
                     dangerouslySetInnerHTML={{ __html: renderedBody }}
                   />
+
+                  {attachments.length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span>
+                          {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <ul className="space-y-1.5">
+                        {attachments.map((att, index) => (
+                          <li
+                            key={`preview-${att.name}-${index}`}
+                            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
+                          >
+                            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-700">
+                              {att.name}
+                            </span>
+                            <span className="text-[10px] text-slate-400 shrink-0">
+                              {formatBytes(att.size)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
