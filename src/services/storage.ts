@@ -2,9 +2,23 @@ import { Campaign, DailyQuotaUsage, GoogleFormAutomation } from '../types';
 
 const PREFIX = 'letsmail_v1_';
 
+// Gmail resets its daily sending quota at midnight Pacific Time, so the
+// counter must roll over on the same schedule to report an accurate "remaining".
 function getTodayKey(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || '00';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+// Gmail's daily sending cap differs by account type: 500 for consumer
+// @gmail.com accounts, 2,000 for Google Workspace domains.
+function getCapLimitForEmail(email: string): number {
+  return /@(gmail|googlemail)\.com$/i.test(email) ? 500 : 2000;
 }
 
 export class OrganizerStorage {
@@ -23,10 +37,16 @@ export class OrganizerStorage {
   // --- Daily Quota Management ---
   public getTodayQuota(): DailyQuotaUsage {
     const today = getTodayKey();
+    const capLimit = getCapLimitForEmail(this.userEmail);
     const raw = localStorage.getItem(this.getKey('quota_' + today));
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw) as DailyQuotaUsage;
+        if (parsed.capLimit !== capLimit) {
+          parsed.capLimit = capLimit;
+          this.saveTodayQuota(parsed);
+        }
+        return parsed;
       } catch {
         // Fallback
       }
@@ -39,7 +59,7 @@ export class OrganizerStorage {
       sentCount: 0,
       failedCount: 0,
       hourlyBreakdown: {},
-      capLimit: 500, // Google consumer Gmail daily limit
+      capLimit,
       lastUpdated: new Date().toISOString()
     };
     this.saveTodayQuota(defaultUsage);

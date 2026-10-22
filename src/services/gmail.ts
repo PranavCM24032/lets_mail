@@ -244,9 +244,11 @@ export async function executeBulkCampaignSending(options: {
   shouldPause: () => boolean;
   shouldCancel: () => boolean;
   throttleMs?: number;
+  maxSends?: number;
 }): Promise<{
   completed: boolean;
   cancelled: boolean;
+  quotaExhausted: boolean;
   sentCount: number;
   failedCount: number;
   logs: RecipientDeliveryLog[];
@@ -263,7 +265,8 @@ export async function executeBulkCampaignSending(options: {
     onProgress,
     shouldPause,
     shouldCancel,
-    throttleMs = 800
+    throttleMs = 800,
+    maxSends = Number.POSITIVE_INFINITY
   } = options;
 
   let sentCount = 0;
@@ -271,8 +274,12 @@ export async function executeBulkCampaignSending(options: {
   const logs: RecipientDeliveryLog[] = [];
 
   for (let i = 0; i < recipients.length; i++) {
+    if (sentCount >= maxSends) {
+      return { completed: false, cancelled: false, quotaExhausted: true, sentCount, failedCount, logs };
+    }
+
     if (shouldCancel()) {
-      return { completed: false, cancelled: true, sentCount, failedCount, logs };
+      return { completed: false, cancelled: true, quotaExhausted: false, sentCount, failedCount, logs };
     }
 
     // Wait if paused
@@ -281,7 +288,7 @@ export async function executeBulkCampaignSending(options: {
     }
 
     if (shouldCancel()) {
-      return { completed: false, cancelled: true, sentCount, failedCount, logs };
+      return { completed: false, cancelled: true, quotaExhausted: false, sentCount, failedCount, logs };
     }
 
     const recipient = recipients[i];
@@ -362,6 +369,7 @@ export async function executeBulkCampaignSending(options: {
       return {
         completed: false,
         cancelled: true,
+        quotaExhausted: false,
         sentCount,
         failedCount,
         logs
@@ -377,6 +385,7 @@ export async function executeBulkCampaignSending(options: {
   return {
     completed: true,
     cancelled: false,
+    quotaExhausted: false,
     sentCount,
     failedCount,
     logs

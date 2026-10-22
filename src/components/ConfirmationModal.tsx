@@ -8,6 +8,7 @@ interface ConfirmationModalProps {
   recipientCount: number;
   subjectPreview: string;
   quotaRemaining: number;
+  quotaLimit?: number;
   onConfirm: () => void;
   onCancel: () => void;
   isSending?: boolean;
@@ -20,6 +21,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   recipientCount,
   subjectPreview,
   quotaRemaining,
+  quotaLimit = 500,
   onConfirm,
   onCancel,
   isSending = false
@@ -75,7 +77,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             <div className="flex justify-between items-center py-1">
               <span className="text-slate-500">Daily Allowance Left:</span>
               <span className="font-semibold text-emerald-700 tabular-nums">
-                {quotaRemaining} / 500
+                {quotaRemaining} / {quotaLimit}
               </span>
             </div>
           </div>

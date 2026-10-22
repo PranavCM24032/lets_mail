@@ -34,6 +34,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const isDemoUser = organizer.uid.startsWith('org_');
 
   const isTokenMissing = !accessToken && !organizer.dispatcherWebhookUrl && !isDemoUser;
+  const sentToday = Math.max(0, quotaLimit - quotaRemaining);
 
   const handleSaveWebhook = (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,13 +49,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   return (
     <>
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
           {/* Brand */}
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-2xs">
               <Mail className="w-4 h-4 text-white" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-sm tracking-tight text-slate-900">Let's Mail</span>
                 <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
@@ -135,11 +136,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             {/* Daily Quota Indicator */}
             <div
               className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-800 font-medium"
-              title="Daily consumer Gmail sending quota per organizer"
+              title="Emails sent today and remaining under your Gmail daily cap (resets midnight Pacific Time)"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>
-                <strong className="font-mono">{quotaRemaining}</strong> / {quotaLimit} emails left today
+                <strong className="font-mono">{sentToday}</strong> sent &middot;{' '}
+                <strong className="font-mono">{quotaRemaining}</strong>/{quotaLimit} left today
               </span>
             </div>
 
@@ -189,7 +191,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="md:hidden px-4 py-1.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
           <span className="flex items-center gap-1.5 text-emerald-700">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>{quotaRemaining} / {quotaLimit} left</span>
+            <span>{sentToday} sent &middot; {quotaRemaining}/{quotaLimit} left</span>
           </span>
           <span className="font-mono text-slate-500 truncate max-w-[180px]">{organizer.email}</span>
         </div>

@@ -64,6 +64,7 @@ export default function App() {
   const [isBatchCompleted, setIsBatchCompleted] = useState(false);
   const [isBatchPaused, setIsBatchPaused] = useState(false);
   const [isBatchCancelled, setIsBatchCancelled] = useState(false);
+  const [isBatchQuotaExhausted, setIsBatchQuotaExhausted] = useState(false);
 
   // Control refs for non-stale pause / cancel signals
   const pauseRef = useRef(false);
@@ -171,6 +172,11 @@ export default function App() {
     return null;
   };
 
+  const handleRecordSingleSentEmail = () => {
+    if (!storage) return;
+    setQuota(storage.recordSentEmails(1, 0));
+  };
+
   const handleUpdateWebhook = (url: string) => {
     if (!organizer) return;
     if (url) {
@@ -231,10 +237,21 @@ export default function App() {
     setIsBatchCompleted(false);
     setIsBatchPaused(false);
     setIsBatchCancelled(false);
+    setIsBatchQuotaExhausted(false);
     setIsBulkSendingModalOpen(true);
 
     pauseRef.current = false;
     cancelRef.current = false;
+
+    // Re-read today's quota right before sending so the cap is always current.
+    const todayQuota = storage.getTodayQuota();
+    setQuota(todayQuota);
+    const maxSends = Math.max(0, todayQuota.capLimit - todayQuota.sentCount);
+
+    // Persist quota after every email so counts stay accurate even if the
+    // campaign is paused, stopped, or the tab is closed mid-way.
+    let recordedSent = 0;
+    let recordedFailed = 0;
 
     // Execute bulk dispatch engine
     const result = await executeBulkCampaignSending({
@@ -246,12 +263,21 @@ export default function App() {
       accessToken: activeToken,
       dispatcherWebhookUrl: organizer.dispatcherWebhookUrl,
       renderContent: renderTemplate,
+      maxSends,
       onProgress: (p) => {
         setActiveBatchIndex(p.currentIndex);
         setActiveBatchSent(p.sentCount);
         setActiveBatchFailed(p.failedCount);
         setActiveBatchCurrentEmail(p.currentRecipient.email);
         setActiveBatchLogs((prev) => [...prev, p.lastLog]);
+
+        const sentDelta = p.sentCount - recordedSent;
+        const failedDelta = p.failedCount - recordedFailed;
+        if (sentDelta > 0 || failedDelta > 0) {
+          recordedSent += sentDelta;
+          recordedFailed += failedDelta;
+          setQuota(storage.recordSentEmails(sentDelta, failedDelta));
+        }
       },
       shouldPause: () => pauseRef.current,
       shouldCancel: () => cancelRef.current,
@@ -260,10 +286,8 @@ export default function App() {
 
     setIsBatchCompleted(result.completed);
     setIsBatchCancelled(result.cancelled);
-
-    // Record quota consumption
-    const updatedQuota = storage.recordSentEmails(result.sentCount, result.failedCount);
-    setQuota(updatedQuota);
+    setIsBatchQuotaExhausted(result.quotaExhausted);
+    setQuota(storage.getTodayQuota());
 
     // Save campaign record to history
     const newCampaign: Campaign = {
@@ -274,7 +298,7 @@ export default function App() {
       bodyHtml: campaignData.bodyHtml,
       recipients: campaignData.recipients,
       createdAt: new Date().toISOString(),
-      status: result.completed ? 'completed' : 'cancelled',
+      status: result.completed ? 'completed' : result.quotaExhausted ? 'paused' : 'cancelled',
       totalCount: totalToProcess,
       sentCount: result.sentCount,
       failedCount: result.failedCount,
@@ -336,6 +360,7 @@ export default function App() {
             organizer={organizer!}
             accessToken={accessToken}
             quotaRemaining={remainingAllowance}
+            quotaLimit={quota.capLimit}
             campaigns={campaigns}
             onDeleteCampaign={(id) => {
               if (storage) {
@@ -345,6 +370,7 @@ export default function App() {
             }}
             onDispatchCampaign={handleStartBulkSending}
             onReauthorize={handleGoogleSignIn}
+            onRecordSentEmail={handleRecordSingleSentEmail}
           />
         )}
 
@@ -381,6 +407,7 @@ export default function App() {
         isCompleted={isBatchCompleted}
         isPaused={isBatchPaused}
         isCancelled={isBatchCancelled}
+        isQuotaExhausted={isBatchQuotaExhausted}
         onPauseToggle={() => {
           pauseRef.current = !pauseRef.current;
           setIsBatchPaused(pauseRef.current);

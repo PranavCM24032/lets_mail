@@ -14,6 +14,7 @@ interface BulkSendingModalProps {
   isCompleted: boolean;
   isPaused: boolean;
   isCancelled: boolean;
+  isQuotaExhausted: boolean;
   onPauseToggle: () => void;
   onCancel: () => void;
   onClose: () => void;
@@ -32,6 +33,7 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
   isCompleted,
   isPaused,
   isCancelled,
+  isQuotaExhausted,
   onPauseToggle,
   onCancel,
   onClose,
@@ -64,6 +66,10 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
                 <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700">
                   Cancelled
                 </span>
+              ) : isQuotaExhausted ? (
+                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
+                  Daily quota reached
+                </span>
               ) : isPaused ? (
                 <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
                   Paused
@@ -79,7 +85,7 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
             </p>
           </div>
 
-          {!isCompleted && !isCancelled && (
+          {!isCompleted && !isCancelled && !isQuotaExhausted && (
             <div className="flex items-center gap-1.5">
               <button
                 onClick={onPauseToggle}
@@ -109,7 +115,7 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
-                  isCompleted ? 'bg-emerald-600' : isPaused ? 'bg-amber-500' : isCancelled ? 'bg-rose-500' : 'bg-indigo-600'
+                  isCompleted ? 'bg-emerald-600' : isPaused || isQuotaExhausted ? 'bg-amber-500' : isCancelled ? 'bg-rose-500' : 'bg-indigo-600'
                 }`}
                 style={{ width: `${progressPercent}%` }}
               />
@@ -131,7 +137,7 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
             </div>
           </div>
 
-          {!isCompleted && !isCancelled && currentEmail && (
+          {!isCompleted && !isCancelled && !isQuotaExhausted && currentEmail && (
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
               <span className="text-slate-500 truncate">
                 Sending to: <strong className="text-slate-900 font-mono">{currentEmail}</strong>
@@ -198,11 +204,17 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
           <p className="text-[11px] text-slate-400">
-            {isCompleted ? 'Transmission finished.' : 'Keep this browser tab open until complete.'}
+            {isCompleted
+              ? 'Transmission finished.'
+              : isQuotaExhausted
+                ? 'Daily sending quota reached. Remaining recipients were not sent.'
+                : isCancelled
+                  ? 'Transmission stopped.'
+                  : 'Keep this browser tab open until complete.'}
           </p>
 
           <div className="flex items-center gap-2">
-            {(isCompleted || isCancelled) && (
+            {(isCompleted || isCancelled || isQuotaExhausted) && (
               <button
                 onClick={onViewHistory}
                 className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white text-slate-700 font-medium text-xs flex items-center gap-1 transition"
@@ -213,10 +225,10 @@ export const BulkSendingModal: React.FC<BulkSendingModalProps> = ({
             )}
             <button
               onClick={onClose}
-              disabled={!isCompleted && !isCancelled && !isPaused}
+              disabled={!isCompleted && !isCancelled && !isPaused && !isQuotaExhausted}
               className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs transition disabled:opacity-50"
             >
-              {isCompleted || isCancelled ? 'Close' : 'Minimize'}
+              {isCompleted || isCancelled || isQuotaExhausted ? 'Close' : 'Minimize'}
             </button>
           </div>
         </div>

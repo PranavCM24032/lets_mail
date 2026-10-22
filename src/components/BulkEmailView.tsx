@@ -15,6 +15,7 @@ interface BulkEmailViewProps {
   organizer: OrganizerUser;
   accessToken: string;
   quotaRemaining: number;
+  quotaLimit: number;
   campaigns: Campaign[];
   onDeleteCampaign: (id: string) => void;
   onDispatchCampaign: (campaign: {
@@ -24,16 +25,19 @@ interface BulkEmailViewProps {
     recipients: Recipient[];
   }) => void;
   onReauthorize?: () => Promise<string | null>;
+  onRecordSentEmail?: () => void;
 }
 
 export const BulkEmailView: React.FC<BulkEmailViewProps> = ({
   organizer,
   accessToken,
   quotaRemaining,
+  quotaLimit,
   campaigns,
   onDeleteCampaign,
   onDispatchCampaign,
-  onReauthorize
+  onReauthorize,
+  onRecordSentEmail
 }) => {
   const [showHistory, setShowHistory] = useState(false);
 
@@ -87,14 +91,16 @@ export const BulkEmailView: React.FC<BulkEmailViewProps> = ({
         )}
       </div>
 
-      {/* Main 3-Step Wizard for Uploading CSV & Sending Customized Emails */}
+      {/* Single-page composer: recipients, content, and dispatch */}
       <CreateCampaignWizard
         organizer={organizer}
         accessToken={accessToken}
         quotaRemaining={quotaRemaining}
+        quotaLimit={quotaLimit}
         onDispatchCampaign={onDispatchCampaign}
         onCancel={() => {}}
         onReauthorize={onReauthorize}
+        onRecordSentEmail={onRecordSentEmail}
       />
 
       {/* Collapsible Past Campaigns Sent History */}
