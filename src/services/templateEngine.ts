@@ -245,6 +245,22 @@ export const DEFAULT_TEMPLATES: EmailTemplate[] = [
 export function renderTemplate(templateString: string, recipient: Recipient): string {
   if (!templateString) return '';
 
+  const dataKeys = Object.keys(recipient.data);
+  const findDataValue = (keys: string[]): string | undefined => {
+    for (const key of keys) {
+      if (recipient.data[key] !== undefined && recipient.data[key] !== '') {
+        return recipient.data[key];
+      }
+      const matchedKey = dataKeys.find(
+        (candidate) => candidate.trim().toLowerCase() === key.trim().toLowerCase()
+      );
+      if (matchedKey && recipient.data[matchedKey] !== '') {
+        return recipient.data[matchedKey];
+      }
+    }
+    return undefined;
+  };
+
   return templateString.replace(/\{([^{}]+)\}/g, (match, rawKey) => {
     const key = rawKey.trim();
     const keyLower = key.toLowerCase();
@@ -257,23 +273,29 @@ export function renderTemplate(templateString: string, recipient: Recipient): st
       return recipient.email;
     }
 
-    // Check in recipient data (case sensitive first, then lowercased)
-    if (recipient.data[key] !== undefined && recipient.data[key] !== '') {
-      return recipient.data[key];
-    }
-    if (recipient.data[keyLower] !== undefined && recipient.data[keyLower] !== '') {
-      return recipient.data[keyLower];
+    // Check in recipient data (case-insensitive against the uploaded column headers)
+    const directValue = findDataValue([key, keyLower]);
+    if (directValue !== undefined) {
+      return directValue;
     }
 
     // Common aliases
     if (keyLower === 'participant_id' || keyLower === 'participantid' || keyLower === 'id') {
-      return recipient.data['participant_id'] || recipient.data['id'] || 'PARTICIPANT-' + recipient.id.slice(-4).toUpperCase();
+      return (
+        findDataValue(['participant_id', 'participantid', 'id']) ||
+        'PARTICIPANT-' + recipient.id.slice(-4).toUpperCase()
+      );
     }
     if (keyLower === 'event' || keyLower === 'event_name') {
-      return recipient.data['event'] || recipient.data['event_name'] || 'College Event';
+      return findDataValue(['event', 'event_name']) || 'College Event';
     }
-    if (keyLower === 'login_link' || keyLower === 'link' || keyLower === 'url') {
-      return recipient.data['login_link'] || recipient.data['link'] || '#';
+    if (
+      keyLower === 'login' ||
+      keyLower === 'login_link' ||
+      keyLower === 'link' ||
+      keyLower === 'url'
+    ) {
+      return findDataValue(['login', 'login_link', 'link', 'url']) || '#';
     }
 
     // Return the placeholder intact if no value found

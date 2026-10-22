@@ -75,8 +75,9 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(DEFAULT_TEMPLATES[0]);
   const [subjectTemplate, setSubjectTemplate] = useState(DEFAULT_TEMPLATES[0].defaultSubject);
   const [bodyTemplate, setBodyTemplate] = useState(DEFAULT_TEMPLATES[0].htmlContent);
-  const [composeView, setComposeView] = useState<'editor' | 'code' | 'preview'>('editor');
+  const [composeView, setComposeView] = useState<'editor' | 'code'>('editor');
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [hasRenderedPreview, setHasRenderedPreview] = useState(false);
   const [bodyVersion, setBodyVersion] = useState(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
@@ -228,6 +229,8 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
       setFileSizeStr(`${(file.size / 1024).toFixed(1)} KB`);
       setSelectedEmailCol(result.detectedEmailCol);
       setSelectedNameCol(result.detectedNameCol);
+      setPreviewIndex(0);
+      setHasRenderedPreview(false);
     } catch (err: unknown) {
       setParseError(err instanceof Error ? err.message : 'Error reading spreadsheet file');
     } finally {
@@ -288,8 +291,31 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
     isValid: true
   };
 
-  const renderedSubject = renderTemplate(subjectTemplate, currentPreviewRecipient);
+  const effectiveSubjectTemplate =
+    subjectTemplate.trim() || campaignName.trim() || 'Event update';
+  const renderedSubject = renderTemplate(effectiveSubjectTemplate, currentPreviewRecipient);
   const renderedBody = renderTemplate(bodyTemplate, currentPreviewRecipient);
+
+  const previewFieldChecks = Array.from(
+    new Set([
+      'name',
+      'login',
+      ...(`${effectiveSubjectTemplate} ${bodyTemplate}`
+        .match(/\{[^{}]+\}/g)
+        ?.map((token) => token.slice(1, -1).trim())
+        .filter(Boolean) || [])
+    ])
+  ).map((key) => {
+    const token = `{${key}}`;
+    const value = renderTemplate(token, currentPreviewRecipient);
+    const keyLower = key.toLowerCase();
+    const missing =
+      value === token ||
+      (['login', 'login_link', 'link', 'url'].includes(keyLower) && value === '#');
+
+    return { token, value, missing };
+  });
+  const subjectMissing = !subjectTemplate.trim();
 
   // Send real test email
   const handleSendTest = async () => {
@@ -507,7 +533,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   <h3 className="font-semibold text-base text-slate-900">Compose Email</h3>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 ml-8">
-                  Personalize with merge tags and preview every message before dispatch.
+                  Write the email once, then render the preview below.
                 </p>
               </div>
               <span className="text-xs text-slate-500 shrink-0">
@@ -537,9 +563,14 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                 placeholder="e.g. Your event pass"
                 className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
               />
+              {!subjectTemplate.trim() && (
+                <p className="mt-1 text-[10px] text-amber-600">
+                  Subject is empty — sending will use &ldquo;{effectiveSubjectTemplate}&rdquo;.
+                </p>
+              )}
             </div>
 
-            {/* Message Editor / Preview */}
+            {/* Message Editor */}
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
@@ -563,40 +594,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   >
                     HTML
                   </button>
-                  <button
-                    onClick={() => setComposeView('preview')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
-                      composeView === 'preview'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Preview
-                  </button>
                 </div>
-
-                {composeView === 'preview' && (
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span>Recipient:</span>
-                    <button
-                      onClick={() => setPreviewIndex((prev) => (prev > 0 ? prev - 1 : Math.max(0, validRecipients.length - 1)))}
-                      disabled={validRecipients.length <= 1}
-                      className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="font-mono text-slate-900 font-medium">
-                      {validRecipients.length > 0 ? previewIndex + 1 : 1} / {Math.max(1, validRecipients.length)}
-                    </span>
-                    <button
-                      onClick={() => setPreviewIndex((prev) => (prev < validRecipients.length - 1 ? prev + 1 : 0))}
-                      disabled={validRecipients.length <= 1}
-                      className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
               </div>
 
               {composeView === 'editor' ? (
@@ -658,7 +656,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     className="min-h-[280px] max-h-[520px] overflow-y-auto bg-white rounded-b-lg border border-slate-200 p-4 text-sm text-slate-800 leading-relaxed focus:outline-hidden focus:border-indigo-500 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline [&_p]:mb-2"
                   />
                 </div>
-              ) : composeView === 'code' ? (
+              ) : (
                 <div className="space-y-1.5">
                   <textarea
                     value={bodyTemplate}
@@ -673,55 +671,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   <p className="text-[10px] text-slate-400">
                     Raw HTML editor — placeholders like {'{name}'} are filled from the uploaded spreadsheet.
                   </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">To:</span>
-                      <span className="font-mono text-slate-900 font-medium truncate max-w-sm">
-                        {currentPreviewRecipient.email}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-slate-500">Rendered Subject:</span>
-                      <span className="font-semibold text-slate-900 truncate max-w-sm">
-                        {renderedSubject}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div
-                    className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
-                    dangerouslySetInnerHTML={{ __html: renderedBody }}
-                  />
-
-                  {attachments.length > 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
-                      <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
-                        <Paperclip className="w-3.5 h-3.5" />
-                        <span>
-                          {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
-                        </span>
-                      </div>
-                      <ul className="space-y-1.5">
-                        {attachments.map((att, index) => (
-                          <li
-                            key={`preview-${att.name}-${index}`}
-                            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
-                          >
-                            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-700">
-                              {att.name}
-                            </span>
-                            <span className="text-[10px] text-slate-400 shrink-0">
-                              {formatBytes(att.size)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -840,43 +789,193 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                 Attached to every personalized email in this campaign.
               </p>
             </div>
+          </section>
 
-            {/* Test Email Row */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-900">Send Test Email</span>
-                <span className="text-slate-400 text-[11px]">Delivers rendered email to your inbox</span>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono"
-                  placeholder="your.email@college.edu"
-                />
-                <button
-                  onClick={handleSendTest}
-                  disabled={isSendingTest || !testEmail}
-                  className="px-4 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-medium transition shrink-0 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSendingTest ? 'Sending...' : 'Send Test'}
-                </button>
-              </div>
-              {testFeedback && (
-                <p
-                  className={`text-[11px] font-medium ${
-                    testFeedback.success ? 'text-emerald-700' : 'text-rose-700'
-                  }`}
-                >
-                  {testFeedback.message}
+          {/* PREVIEW */}
+          <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-slate-200">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[11px] font-semibold flex items-center justify-center">
+                    3
+                  </span>
+                  <h3 className="font-semibold text-base text-slate-900">Preview</h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 ml-8">
+                  Render once to verify the subject and every Excel field before sending.
                 </p>
+              </div>
+
+              {hasRenderedPreview && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+                  <span>Recipient:</span>
+                  <button
+                    onClick={() =>
+                      setPreviewIndex((prev) =>
+                        prev > 0 ? prev - 1 : Math.max(0, validRecipients.length - 1)
+                      )
+                    }
+                    disabled={validRecipients.length <= 1}
+                    className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="font-mono text-slate-900 font-medium">
+                    {validRecipients.length > 0 ? previewIndex + 1 : 1} /{' '}
+                    {Math.max(1, validRecipients.length)}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setPreviewIndex((prev) =>
+                        prev < validRecipients.length - 1 ? prev + 1 : 0
+                      )
+                    }
+                    disabled={validRecipients.length <= 1}
+                    className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
             </div>
+
+            {!hasRenderedPreview ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center space-y-3">
+                <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto">
+                  <FileText className="w-4 h-4 text-slate-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {validRecipients.length === 0
+                      ? 'Upload recipients to preview'
+                      : 'Preview is not rendered yet'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                    Click Render Preview to check whether the subject is present and whether
+                    every merge field matches your Excel columns.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setHasRenderedPreview(true)}
+                  disabled={validRecipients.length === 0}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Render Preview
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-500">To:</span>
+                    <span className="font-mono text-slate-900 font-medium truncate max-w-sm">
+                      {currentPreviewRecipient.email}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-slate-500">Subject:</span>
+                      <span className="font-semibold text-slate-900 truncate max-w-sm">
+                        {renderedSubject}
+                      </span>
+                    </div>
+                    <div className="flex justify-end">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide ${
+                          subjectMissing
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {subjectMissing ? 'Subject missing - campaign name used' : 'Subject present'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-2 mt-1 border-t border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-600">Merge field check</span>
+                      <span className="text-[10px] text-slate-500">
+                        {previewFieldChecks.filter((field) => !field.missing).length}/
+                        {previewFieldChecks.length} loaded
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Excel headers are matched case-insensitively, so Name, name, and NAME all
+                      work. Login also matches login_link.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {previewFieldChecks.map((field) => (
+                        <div
+                          key={field.token}
+                          className={`rounded-md border px-2 py-1.5 ${
+                            field.missing
+                              ? 'border-rose-200 bg-rose-50'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <code className="font-mono text-[10px] text-slate-700">
+                              {field.token}
+                            </code>
+                            <span
+                              className={`text-[9px] font-semibold uppercase tracking-wide ${
+                                field.missing ? 'text-rose-700' : 'text-emerald-700'
+                              }`}
+                            >
+                              {field.missing ? 'missing' : 'loaded'}
+                            </span>
+                          </div>
+                          <p
+                            className={`mt-1 text-[10px] break-all ${
+                              field.missing ? 'text-rose-700' : 'text-slate-500'
+                            }`}
+                          >
+                            {field.missing ? 'No matching Excel column' : field.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
+                  dangerouslySetInnerHTML={{ __html: renderedBody }}
+                />
+
+                {attachments.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>
+                        {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {attachments.map((att, index) => (
+                        <li
+                          key={`preview-${att.name}-${index}`}
+                          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
+                        >
+                          <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-700">
+                            {att.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 shrink-0">
+                            {formatBytes(att.size)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
           </section>
         </div>
 
-        {/* RIGHT: Summary + Dispatch */}
+        {/* RIGHT: Summary */}
         <aside className="lg:col-span-1 space-y-4 lg:sticky lg:top-20">
           <section className="bg-white border border-slate-200 rounded-xl p-5 space-y-4 shadow-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1004,31 +1103,115 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                 </div>
               </div>
             )}
+          </section>
+        </aside>
+      </div>
 
+      {/* ACTIONS */}
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        {/* Test Email */}
+        <section className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-sm text-slate-900">Send test email</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Deliver the rendered email to your own inbox first.
+              </p>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-medium">
+              Optional
+            </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 mt-auto">
+            <input
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 font-mono focus:outline-hidden focus:border-indigo-500"
+              placeholder="your.email@college.edu"
+            />
             <button
-              onClick={handleDispatchClick}
-              disabled={isAuthorizing || quotaRemaining <= 0 || validRecipients.length === 0}
-              className="w-full px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-xs flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              onClick={handleSendTest}
+              disabled={isSendingTest || !testEmail || !hasRenderedPreview || validRecipients.length === 0}
+              className="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-medium transition shrink-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>
-                {isAuthorizing
-                  ? 'Connecting Gmail...'
-                  : validRecipients.length === 0
-                    ? 'Add recipients to send'
+              {isSendingTest
+                ? 'Sending...'
+                : !hasRenderedPreview
+                  ? 'Render preview first'
+                  : 'Send Test'}
+            </button>
+          </div>
+
+          {testFeedback && (
+            <p
+              className={`text-[11px] font-medium ${
+                testFeedback.success ? 'text-emerald-700' : 'text-rose-700'
+              }`}
+            >
+              {testFeedback.message}
+            </p>
+          )}
+        </section>
+
+        {/* Dispatch */}
+        <section className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold text-sm text-slate-900">Dispatch campaign</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {validRecipients.length} recipient{validRecipients.length === 1 ? '' : 's'} &middot;{' '}
+                {quotaRemaining} quota left today
+              </p>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                validRecipients.length === 0
+                  ? 'bg-slate-100 text-slate-600'
+                  : quotaRemaining <= 0
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {validRecipients.length === 0
+                ? 'Waiting for list'
+                : quotaRemaining <= 0
+                  ? 'Quota reached'
+                  : 'Ready'}
+            </span>
+          </div>
+
+          <button
+            onClick={handleDispatchClick}
+            disabled={
+              isAuthorizing ||
+              quotaRemaining <= 0 ||
+              validRecipients.length === 0 ||
+              !hasRenderedPreview
+            }
+            className="mt-auto w-full px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-xs flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>
+              {isAuthorizing
+                ? 'Connecting Gmail...'
+                : validRecipients.length === 0
+                  ? 'Add recipients to send'
+                  : !hasRenderedPreview
+                    ? 'Render preview first'
                     : quotaRemaining <= 0
                       ? 'Daily quota reached'
                       : validRecipients.length > quotaRemaining
                         ? `Send ${quotaRemaining} of ${validRecipients.length}`
                         : `Send Campaign (${validRecipients.length})`}
-              </span>
-            </button>
+            </span>
+          </button>
 
-            <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-              Sends one email every ~0.65s. Keep this tab open until the campaign finishes.
-            </p>
-          </section>
-        </aside>
+          <p className="text-[10px] text-slate-400">
+            Sends one email every ~0.65s. Keep this tab open until the campaign finishes.
+          </p>
+        </section>
       </div>
 
       {/* Confirmation Modal */}
@@ -1046,7 +1229,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
           setShowConfirmModal(false);
           onDispatchCampaign({
             name: campaignName,
-            subject: subjectTemplate,
+            subject: effectiveSubjectTemplate,
             bodyHtml: bodyTemplate,
             recipients: validRecipients,
             attachments
