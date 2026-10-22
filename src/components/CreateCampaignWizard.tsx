@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Upload,
+  AlertTriangle,
   Download,
   ChevronLeft,
   ChevronRight,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Recipient, EmailTemplate, OrganizerUser, EmailAttachment } from '../types';
 import { parseRecipientFile, ParseResult, generateSampleCsvContent, reprocessWithEmailColumn } from '../services/fileParser';
-import { DEFAULT_TEMPLATES, renderTemplate } from '../services/templateEngine';
+import { DEFAULT_TEMPLATES, hasRecipientDataField, renderTemplate } from '../services/templateEngine';
 import { sendEmailViaGmailApi } from '../services/gmail';
 import { ConfirmationModal } from './ConfirmationModal';
 
@@ -305,18 +306,32 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   ).map((key) => {
     const token = `{${key}}`;
     const value = renderTemplate(token, currentPreviewRecipient);
-    const keyLower = key.toLowerCase();
+    const keyLower = key.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const fallbackField = [
+      'event',
+      'event_name',
+      'participant_id',
+      'participantid',
+      'id',
+      'login',
+      'login_link',
+      'link',
+      'url'
+    ].includes(keyLower);
     const missing =
       value === token ||
-      (['login', 'login_link', 'link', 'url'].includes(keyLower) && value === '#');
+      (fallbackField && !hasRecipientDataField(currentPreviewRecipient, key));
 
     return { token, value, missing };
   });
   const subjectMissing = !subjectTemplate.trim();
+  const missingFieldCount = previewFieldChecks.filter((field) => field.missing).length;
+  const hasMissingMergeFields = missingFieldCount > 0;
+  const previewBlocked = subjectMissing || hasMissingMergeFields;
 
   // Send real test email
   const handleSendTest = async () => {
-    if (!testEmail) return;
+    if (!testEmail || !hasRenderedPreview || previewBlocked) return;
     setIsSendingTest(true);
     setTestFeedback(null);
 
@@ -360,6 +375,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   };
 
   const handleDispatchClick = async () => {
+    if (!hasRenderedPreview || previewBlocked) return;
     if (!hasSendingAuth && onReauthorize) {
       setIsAuthorizing(true);
       try {
@@ -796,12 +812,13 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   <h3 className="font-semibold text-base text-slate-900">Preview</h3>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 ml-8">
-                  Render once to verify the subject and every Excel field before sending.
+                  Render to verify the subject and every Excel field. Re-render any time after
+                  editing.
                 </p>
               </div>
 
               {hasRenderedPreview && (
-                <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 shrink-0">
                   <span>Recipient:</span>
                   <button
                     onClick={() =>
@@ -828,6 +845,13 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
                   >
                     <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setHasRenderedPreview(true)}
+                    className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium transition cursor-pointer"
+                  >
+                    <FileText className="w-3 h-3" />
+                    Render Again
                   </button>
                 </div>
               )}
@@ -933,6 +957,25 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   </div>
                 </div>
 
+                {previewBlocked && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Sending is locked</p>
+                      <p className="mt-0.5">
+                        {subjectMissing && 'Subject is missing. '}
+                        {hasMissingMergeFields &&
+                          `${missingFieldCount} merge field${
+                            missingFieldCount === 1 ? '' : 's'
+                          } could not be matched to an Excel column.`}
+                      </p>
+                      <p className="mt-1 text-rose-700">
+                        Fix the subject or uploaded columns, then render again.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div
                   className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
                   dangerouslySetInnerHTML={{ __html: renderedBody }}
@@ -994,14 +1037,22 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
             />
             <button
               onClick={handleSendTest}
-              disabled={isSendingTest || !testEmail || !hasRenderedPreview || validRecipients.length === 0}
+              disabled={
+                isSendingTest ||
+                !testEmail ||
+                !hasRenderedPreview ||
+                validRecipients.length === 0 ||
+                previewBlocked
+              }
               className="px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 text-xs font-medium transition shrink-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSendingTest
                 ? 'Sending...'
                 : !hasRenderedPreview
                   ? 'Render preview first'
-                  : 'Send Test'}
+                  : previewBlocked
+                    ? 'Fix subject/fields'
+                    : 'Send Test'}
             </button>
           </div>
 
@@ -1028,18 +1079,22 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
             </div>
             <span
               className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                validRecipients.length === 0
+                validRecipients.length === 0 || !hasRenderedPreview
                   ? 'bg-slate-100 text-slate-600'
-                  : quotaRemaining <= 0
+                  : previewBlocked || quotaRemaining <= 0
                     ? 'bg-amber-50 text-amber-700'
                     : 'bg-emerald-50 text-emerald-700'
               }`}
             >
               {validRecipients.length === 0
                 ? 'Waiting for list'
-                : quotaRemaining <= 0
-                  ? 'Quota reached'
-                  : 'Ready'}
+                : !hasRenderedPreview
+                  ? 'Preview required'
+                  : previewBlocked
+                    ? 'Fix preview'
+                    : quotaRemaining <= 0
+                      ? 'Quota reached'
+                      : 'Ready'}
             </span>
           </div>
 
@@ -1049,7 +1104,8 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
               isAuthorizing ||
               quotaRemaining <= 0 ||
               validRecipients.length === 0 ||
-              !hasRenderedPreview
+              !hasRenderedPreview ||
+              previewBlocked
             }
             className="mt-auto w-full px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-xs flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
@@ -1061,11 +1117,13 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   ? 'Add recipients to send'
                   : !hasRenderedPreview
                     ? 'Render preview first'
-                    : quotaRemaining <= 0
-                      ? 'Daily quota reached'
-                      : validRecipients.length > quotaRemaining
-                        ? `Send ${quotaRemaining} of ${validRecipients.length}`
-                        : `Send Campaign (${validRecipients.length})`}
+                    : previewBlocked
+                      ? 'Fix subject/fields'
+                      : quotaRemaining <= 0
+                        ? 'Daily quota reached'
+                        : validRecipients.length > quotaRemaining
+                          ? `Send ${quotaRemaining} of ${validRecipients.length}`
+                          : `Send Campaign (${validRecipients.length})`}
             </span>
           </button>
 
