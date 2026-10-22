@@ -29,11 +29,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [tempWebhookUrl, setTempWebhookUrl] = useState(organizer.dispatcherWebhookUrl || '');
   const [webhookSavedFeedback, setWebhookSavedFeedback] = useState(false);
 
-  const isDemoUser =
-    organizer.uid.startsWith('org_') ||
-    organizer.email.includes('@sbjit.edu') ||
-    organizer.email.includes('demo') ||
-    organizer.email.includes('test');
+  // Only built-in mock organizers are demos; real accounts must never be
+  // treated as simulated based on their email address.
+  const isDemoUser = organizer.uid.startsWith('org_');
 
   const isTokenMissing = !accessToken && !organizer.dispatcherWebhookUrl && !isDemoUser;
 

@@ -199,11 +199,9 @@ export default function App() {
 
     // Check token availability
     let activeToken = accessToken || sessionStorage.getItem('letsmail_gmail_oauth_token') || '';
-    const isSimulatedAccount =
-      organizer.uid.startsWith('org_') ||
-      organizer.email.includes('@sbjit.edu') ||
-      organizer.email.includes('demo') ||
-      organizer.email.includes('test');
+    // Only the built-in mock organizers are simulated. A real signed-in user
+    // (including college addresses like @sbjit.edu) always sends for real.
+    const isSimulatedAccount = organizer.uid.startsWith('org_');
 
     if (!activeToken && !organizer.dispatcherWebhookUrl) {
       if (isSimulatedAccount) {

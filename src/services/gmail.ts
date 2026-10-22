@@ -145,14 +145,12 @@ export async function sendEmailViaGmailApi(params: SendEmailParams): Promise<Sen
     }
   }
 
-  // 2. Check if simulated mode (used in test organizer mode, simulated tokens, or demo accounts)
+  // 2. Check if simulated mode (only for the built-in mock organizers / mocked tokens).
+  // Never infer this from the sender address: real users can legitimately have
+  // "test", "demo", "@sbjit.edu", etc. in their email and still expect real delivery.
   const isDemoOrSimulated =
     (effectiveToken && effectiveToken.startsWith('simulated_oauth_token_')) ||
-    (effectiveToken && effectiveToken.startsWith('mock_')) ||
-    params.fromEmail?.includes('@sbjit.edu') ||
-    params.fromEmail?.includes('demo') ||
-    params.fromEmail?.includes('test') ||
-    params.fromEmail?.includes('organizer');
+    (effectiveToken && effectiveToken.startsWith('mock_'));
 
   if (isDemoOrSimulated) {
     await new Promise((resolve) => setTimeout(resolve, 350 + Math.random() * 250));

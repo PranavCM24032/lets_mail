@@ -76,11 +76,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [isAuthorizing, setIsAuthorizing] = useState(false);
 
   // Check if simulated / demo account or has valid sending credentials
-  const isSimulatedAccount =
-    organizer.uid.startsWith('org_') ||
-    organizer.email.includes('@sbjit.edu') ||
-    organizer.email.includes('demo') ||
-    organizer.email.includes('test');
+  const isSimulatedAccount = organizer.uid.startsWith('org_');
 
   const hasSendingAuth = Boolean(accessToken || organizer.dispatcherWebhookUrl || isSimulatedAccount);
 
