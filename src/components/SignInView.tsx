@@ -12,6 +12,20 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { OrganizerUser } from '../types';
+import { consumeRedirectAuthError } from '../services/auth';
+
+const describeAuthError = (code: string, message: string): string => {
+  if (code === 'auth/unauthorized-domain') {
+    return `This domain is not authorized for Google sign-in in Firebase. Add "${window.location.hostname}" under Firebase Console > Authentication > Settings > Authorized domains.`;
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Google sign-in is disabled for this Firebase project. Enable the Google provider under Firebase Console > Authentication > Sign-in method.';
+  }
+  if (code === 'auth/internal-error') {
+    return 'Google rejected the OAuth request. This usually means the OAuth consent screen is not configured for the gmail.send scope, or this account is not allowed as a test user.';
+  }
+  return message;
+};
 
 interface SignInViewProps {
   onGoogleSignIn: () => Promise<any> | void;
@@ -25,7 +39,10 @@ export const SignInView: React.FC<SignInViewProps> = ({
   onSelectMockOrganizer
 }) => {
   const [internalLoading, setInternalLoading] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(() => {
+    const stored = consumeRedirectAuthError();
+    return stored ? describeAuthError(stored.code, stored.message) : null;
+  });
   const [showSandbox, setShowSandbox] = useState(false);
 
   const activeLoading = isLoading || internalLoading;
@@ -51,6 +68,10 @@ export const SignInView: React.FC<SignInViewProps> = ({
         setAuthError('The sign-in popup was blocked by your browser. Please allow popups for this site.');
       } else if (errorObj?.code === 'auth/network-request-failed') {
         setAuthError('A network error occurred. Please verify your internet connection and try again.');
+      } else if (errorObj?.code === 'auth/unauthorized-domain') {
+        setAuthError(describeAuthError('auth/unauthorized-domain', ''));
+      } else if (errorObj?.code === 'auth/operation-not-allowed') {
+        setAuthError(describeAuthError('auth/operation-not-allowed', ''));
       } else {
         setAuthError(errorObj?.message || 'Authentication could not be completed. Please try again.');
       }
