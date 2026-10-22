@@ -691,12 +691,10 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     </div>
                   </div>
 
-                  <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
-                    <div
-                      className="bg-white rounded-lg p-4 min-h-[260px] shadow-xs [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
-                      dangerouslySetInnerHTML={{ __html: renderedBody }}
-                    />
-                  </div>
+                  <div
+                    className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
+                    dangerouslySetInnerHTML={{ __html: renderedBody }}
+                  />
                 </div>
               )}
 
