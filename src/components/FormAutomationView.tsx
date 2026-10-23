@@ -7,7 +7,6 @@ import {
   Trash2,
   Plus,
   Sparkles,
-  Info,
   Pencil,
   Eye,
   Code2,
@@ -284,19 +283,6 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
           >
             Setup Guide
           </button>
-        </div>
-      </div>
-
-      {/* Free Apps Script Notice */}
-      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/90 text-xs text-slate-600 flex items-start gap-3">
-        <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-        <div className="leading-relaxed">
-          <strong className="text-slate-900">100% Free Cloud Architecture:</strong> Google Forms doesn't emit native webhooks without paid third-party tools.
-          Let's Mail creates a companion <strong>Google Apps Script</strong> that attaches directly to your Google Sheet response tab.
-          It executes 24/7 on Google's cloud on <code>onFormSubmit</code> and sends from your personal address with $0 hosting cost.
-          <span className="text-slate-500 block text-[11px] mt-0.5">
-            Apps Script email quota: 100 recipients/day for consumer @gmail.com accounts (1,500/day for college Workspace accounts).
-          </span>
         </div>
       </div>
 
