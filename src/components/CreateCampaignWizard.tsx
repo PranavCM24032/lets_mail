@@ -74,7 +74,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
 
   // --- Compose State ---
   const editorRef = useRef<HTMLDivElement>(null);
-  const [campaignName, setCampaignName] = useState('College Event Notice');
+
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(DEFAULT_TEMPLATES[0]);
   const [subjectTemplate, setSubjectTemplate] = useState(DEFAULT_TEMPLATES[0].defaultSubject);
   const [bodyTemplate, setBodyTemplate] = useState(DEFAULT_TEMPLATES[0].htmlContent);
@@ -303,8 +303,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
     );
   };
 
-  const effectiveSubjectTemplate =
-    subjectTemplate.trim() || campaignName.trim() || 'Event update';
+  const effectiveSubjectTemplate = subjectTemplate.trim() || 'Event update';
   const renderedSubject = renderTemplate(effectiveSubjectTemplate, currentPreviewRecipient);
   const renderedBody = renderTemplate(bodyTemplate, currentPreviewRecipient);
 
@@ -546,18 +545,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
               <span className="text-xs text-slate-500 shrink-0">
                 Recipients: <strong className="text-slate-900">{validRecipients.length}</strong>
               </span>
-            </div>
-
-            {/* Campaign Title */}
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Campaign Title</label>
-              <input
-                type="text"
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value)}
-                placeholder="e.g. Hackathon Pass Dispatch 2026"
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
-              />
             </div>
 
             {/* Subject Line */}
@@ -880,7 +867,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                             : 'bg-emerald-100 text-emerald-800'
                         }`}
                       >
-                        {subjectMissing ? 'Subject missing - campaign name used' : 'Subject present'}
+                        {subjectMissing ? 'Subject missing - default subject used' : 'Subject present'}
                       </span>
                     </div>
                   </div>
@@ -1128,7 +1115,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
         onConfirm={() => {
           setShowConfirmModal(false);
           onDispatchCampaign({
-            name: campaignName,
+            name: effectiveSubjectTemplate,
             subject: effectiveSubjectTemplate,
             bodyHtml: bodyTemplate,
             recipients: validRecipients,
