@@ -3,8 +3,6 @@ import {
   Upload,
   AlertTriangle,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Send,
   Bold,
   Italic,
@@ -75,8 +73,9 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const [subjectTemplate, setSubjectTemplate] = useState(DEFAULT_TEMPLATES[0].defaultSubject);
   const [bodyTemplate, setBodyTemplate] = useState(DEFAULT_TEMPLATES[0].htmlContent);
   const [composeView, setComposeView] = useState<'editor' | 'code'>('editor');
-  const [previewIndex, setPreviewIndex] = useState(0);
   const [hasRenderedPreview, setHasRenderedPreview] = useState(false);
+  const [previewRenderKey, setPreviewRenderKey] = useState(0);
+  const [lastRenderedAt, setLastRenderedAt] = useState<string | null>(null);
   const [bodyVersion, setBodyVersion] = useState(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
@@ -228,7 +227,6 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
       setFileSizeStr(`${(file.size / 1024).toFixed(1)} KB`);
       setSelectedEmailCol(result.detectedEmailCol);
       setSelectedNameCol(result.detectedNameCol);
-      setPreviewIndex(0);
       setHasRenderedPreview(false);
     } catch (err: unknown) {
       setParseError(err instanceof Error ? err.message : 'Error reading spreadsheet file');
@@ -275,7 +273,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const duplicateCount = recipients.filter((r) => r.isDuplicate).length;
   const invalidCount = recipients.filter((r) => !r.isValid && !r.isDuplicate).length;
 
-  const currentPreviewRecipient = validRecipients[previewIndex] || {
+  const currentPreviewRecipient = validRecipients[0] || {
     id: 'preview',
     email: organizer.email,
     name: organizer.displayName,
@@ -287,6 +285,16 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
       login_link: ''
     },
     isValid: true
+  };
+
+  const renderPreview = () => {
+    // Pull the latest DOM content in case contentEditable missed an input event.
+    if (composeView === 'editor') syncEditor();
+    setHasRenderedPreview(true);
+    setPreviewRenderKey((key) => key + 1);
+    setLastRenderedAt(
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    );
   };
 
   const effectiveSubjectTemplate =
@@ -812,47 +820,24 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   <h3 className="font-semibold text-base text-slate-900">Preview</h3>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 ml-8">
-                  Render to verify the subject and every Excel field. Re-render any time after
-                  editing.
+                  Preview uses the first recipient only. Every other email is personalized at send
+                  time. Re-render any time after editing.
                 </p>
               </div>
 
               {hasRenderedPreview && (
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 shrink-0">
-                  <span>Recipient:</span>
+                  <span>Previewing first recipient</span>
                   <button
-                    onClick={() =>
-                      setPreviewIndex((prev) =>
-                        prev > 0 ? prev - 1 : Math.max(0, validRecipients.length - 1)
-                      )
-                    }
-                    disabled={validRecipients.length <= 1}
-                    className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="font-mono text-slate-900 font-medium">
-                    {validRecipients.length > 0 ? previewIndex + 1 : 1} /{' '}
-                    {Math.max(1, validRecipients.length)}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setPreviewIndex((prev) =>
-                        prev < validRecipients.length - 1 ? prev + 1 : 0
-                      )
-                    }
-                    disabled={validRecipients.length <= 1}
-                    className="p-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40 cursor-pointer"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setHasRenderedPreview(true)}
+                    onClick={renderPreview}
                     className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium transition cursor-pointer"
                   >
                     <FileText className="w-3 h-3" />
                     Render Again
                   </button>
+                  {lastRenderedAt && (
+                    <span className="text-[10px] text-slate-400">Rendered {lastRenderedAt}</span>
+                  )}
                 </div>
               )}
             </div>
@@ -874,7 +859,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => setHasRenderedPreview(true)}
+                  onClick={renderPreview}
                   disabled={validRecipients.length === 0}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
@@ -977,6 +962,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                 )}
 
                 <div
+                  key={previewRenderKey}
                   className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
                   dangerouslySetInnerHTML={{ __html: renderedBody }}
                 />
