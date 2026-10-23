@@ -299,12 +299,12 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
       'name',
       'login',
       ...(`${effectiveSubjectTemplate} ${bodyTemplate}`
-        .match(/\{[^{}]+\}/g)
-        ?.map((token) => token.slice(1, -1).trim())
+        .match(/\$\{[^{}]+\}/g)
+        ?.map((token) => token.slice(2, -1).trim())
         .filter(Boolean) || [])
     ])
   ).map((key) => {
-    const token = `{${key}}`;
+    const token = `\${${key}}`;
     const value = renderTemplate(token, currentPreviewRecipient);
     const keyLower = key.trim().toLowerCase().replace(/[\s-]+/g, '_');
     const fallbackField = [
@@ -679,7 +679,7 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                     className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:border-indigo-500"
                   />
                   <p className="text-[10px] text-slate-400">
-                    Raw HTML editor — placeholders like {'{name}'} are filled from the uploaded spreadsheet.
+                    Raw HTML editor — placeholders like {'${name}'} are filled from the uploaded spreadsheet.
                   </p>
                 </div>
               )}

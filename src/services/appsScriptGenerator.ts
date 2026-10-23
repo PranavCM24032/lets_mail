@@ -114,7 +114,7 @@ function onFormSubmit(e) {
 
     Object.keys(dataMap).forEach(key => {
       const val = dataMap[key];
-      const regex = new RegExp("{" + key + "}", "gi");
+      const regex = new RegExp("\\\\$\\\\{" + key + "\\\\}", "gi");
       subject = subject.replace(regex, val);
       bodyHtml = bodyHtml.replace(regex, val);
     });

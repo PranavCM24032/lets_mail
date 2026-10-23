@@ -28,30 +28,30 @@ interface FormAutomationViewProps {
 const MESSAGE_PRESETS = [
   {
     name: 'Event Pass & Ticket',
-    subject: 'Confirmed: {event} Registration — Pass ID {participant_id}',
+    subject: 'Confirmed: ${event} Registration — Pass ID ${participant_id}',
     body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; rounded: 12px; background-color: #ffffff;">
   <div style="text-align: center; margin-bottom: 24px;">
     <h2 style="color: #0f172a; margin: 0 0 8px;">Registration Confirmed!</h2>
-    <p style="color: #64748b; font-size: 14px; margin: 0;">Welcome to <strong>{event}</strong></p>
+    <p style="color: #64748b; font-size: 14px; margin: 0;">Welcome to <strong>\${event}</strong></p>
   </div>
-  <p style="color: #334155; font-size: 14px; line-height: 1.6;">Dear <strong>{name}</strong>,</p>
+  <p style="color: #334155; font-size: 14px; line-height: 1.6;">Dear <strong>\${name}</strong>,</p>
   <p style="color: #334155; font-size: 14px; line-height: 1.6;">Thank you for registering through our official Google Form. Your seat has been secured.</p>
   <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0; text-align: center;">
     <span style="font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">Official Attendee Pass ID</span>
-    <span style="font-size: 22px; font-weight: bold; color: #4f46e5; font-family: monospace;">{participant_id}</span>
+    <span style="font-size: 22px; font-weight: bold; color: #4f46e5; font-family: monospace;">\${participant_id}</span>
   </div>
   <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please present this email or your Pass ID at the venue registration counter on arrival.</p>
   <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-  <p style="color: #94a3b8; font-size: 12px; margin: 0; text-align: center;">Sent on behalf of the {event} Organizing Committee</p>
+  <p style="color: #94a3b8; font-size: 12px; margin: 0; text-align: center;">Sent on behalf of the \${event} Organizing Committee</p>
 </div>`
   },
   {
     name: 'Guidelines & Instructions',
-    subject: 'Guidelines & Entry Pass for {event} — ID {participant_id}',
+    subject: 'Guidelines & Entry Pass for ${event} — ID ${participant_id}',
     body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
-  <h2 style="color: #0f172a; margin-top: 0;">Hello {name},</h2>
-  <p style="color: #334155; font-size: 14px; line-height: 1.6;">Your Google Form entry for <strong>{event}</strong> has been received!</p>
-  <p style="color: #334155; font-size: 14px;"><strong>Your Attendee ID:</strong> <span style="font-family: monospace; font-weight: bold; color: #4f46e5;">{participant_id}</span></p>
+  <h2 style="color: #0f172a; margin-top: 0;">Hello \${name},</h2>
+  <p style="color: #334155; font-size: 14px; line-height: 1.6;">Your Google Form entry for <strong>\${event}</strong> has been received!</p>
+  <p style="color: #334155; font-size: 14px;"><strong>Your Attendee ID:</strong> <span style="font-family: monospace; font-weight: bold; color: #4f46e5;">\${participant_id}</span></p>
   <h3 style="color: #1e293b; font-size: 15px; margin-top: 18px;">Important Guidelines:</h3>
   <ul style="color: #475569; font-size: 13px; line-height: 1.6; padding-left: 20px;">
     <li>Carry your college photo identification card.</li>
@@ -63,10 +63,10 @@ const MESSAGE_PRESETS = [
   },
   {
     name: 'Simple Confirmation Receipt',
-    subject: 'Receipt: Your response to {event} was received ({participant_id})',
-    body: `<p>Dear <strong>{name}</strong>,</p>
-<p>We have successfully recorded your submission for <strong>{event}</strong>.</p>
-<p>Registration Code: <strong style="color: #4f46e5; font-family: monospace;">{participant_id}</strong></p>
+    subject: 'Receipt: Your response to ${event} was received (${participant_id})',
+    body: `<p>Dear <strong>\${name}</strong>,</p>
+<p>We have successfully recorded your submission for <strong>\${event}</strong>.</p>
+<p>Registration Code: <strong style="color: #4f46e5; font-family: monospace;">\${participant_id}</strong></p>
 <p>If you have any questions or need to modify your registration details, simply reply to this email.</p>
 <p>Warm regards,<br/>Campus Event Committee</p>`
   }
@@ -105,7 +105,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
   const [newEmailColumn, setNewEmailColumn] = useState('Email Address');
   const [newNameColumn, setNewNameColumn] = useState('Full Name');
   const [newParticipantPrefix, setNewParticipantPrefix] = useState('REG-');
-  const [newSubjectTemplate, setNewSubjectTemplate] = useState('Confirmed: {event} Registration — ID {participant_id}');
+  const [newSubjectTemplate, setNewSubjectTemplate] = useState('Confirmed: ${event} Registration — ID ${participant_id}');
   const [newBodyTemplate, setNewBodyTemplate] = useState(MESSAGE_PRESETS[0].body);
 
   // Copy feedback
@@ -553,17 +553,17 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                         <span>Insert tag:</span>
                         <button
                           type="button"
-                          onClick={() => handleInsertTag('{event}', 'subject')}
+                          onClick={() => handleInsertTag('${event}', 'subject')}
                           className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
                         >
-                          +{'{event}'}
+                          +{'${event}'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleInsertTag('{participant_id}', 'subject')}
+                          onClick={() => handleInsertTag('${participant_id}', 'subject')}
                           className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
                         >
-                          +{'{participant_id}'}
+                          +{'${participant_id}'}
                         </button>
                       </div>
                     </div>
@@ -571,7 +571,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                       type="text"
                       value={editSubject}
                       onChange={(e) => setEditSubject(e.target.value)}
-                      placeholder="e.g. Confirmed: {event} Pass — ID {participant_id}"
+                      placeholder="e.g. Confirmed: ${event} Pass — ID ${participant_id}"
                       className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                     />
                   </div>
@@ -586,24 +586,24 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                         <span className="text-[11px] text-slate-400">Quick Tags:</span>
                         <button
                           type="button"
-                          onClick={() => handleInsertTag('{name}', 'body')}
+                          onClick={() => handleInsertTag('${name}', 'body')}
                           className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
                         >
-                          +{'{name}'}
+                          +{'${name}'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleInsertTag('{event}', 'body')}
+                          onClick={() => handleInsertTag('${event}', 'body')}
                           className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
                         >
-                          +{'{event}'}
+                          +{'${event}'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleInsertTag('{participant_id}', 'body')}
+                          onClick={() => handleInsertTag('${participant_id}', 'body')}
                           className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
                         >
-                          +{'{participant_id}'}
+                          +{'${participant_id}'}
                         </button>
 
                         <button
@@ -807,7 +807,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                 type="text"
                 value={newSubjectTemplate}
                 onChange={(e) => setNewSubjectTemplate(e.target.value)}
-                placeholder="Confirmed: {event} Registration — ID {participant_id}"
+                placeholder="Confirmed: ${event} Registration — ID ${participant_id}"
                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>

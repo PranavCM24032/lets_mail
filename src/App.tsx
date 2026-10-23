@@ -112,6 +112,44 @@ export default function App() {
     setFormAutomations(loadedAutomations);
   }, [organizer]);
 
+  // Keep the quota display in sync with Gmail's reset (midnight Pacific),
+  // other tabs, and the system clock without requiring a page reload.
+  useEffect(() => {
+    if (!storage) return;
+
+    const refreshQuota = () => {
+      const fresh = storage.getTodayQuota();
+      setQuota((prev) =>
+        prev.dateKey === fresh.dateKey &&
+        prev.sentCount === fresh.sentCount &&
+        prev.failedCount === fresh.failedCount &&
+        prev.capLimit === fresh.capLimit
+          ? prev
+          : fresh
+      );
+    };
+
+    const interval = window.setInterval(refreshQuota, 15000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshQuota();
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key?.includes('_quota_')) refreshQuota();
+    };
+
+    window.addEventListener('focus', refreshQuota);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshQuota);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [storage]);
+
   // Handle Google OAuth Sign In
   const handleGoogleSignIn = async (): Promise<string | null> => {
     setIsLoadingAuth(true);

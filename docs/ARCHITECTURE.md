@@ -36,7 +36,7 @@ src/
     gmail.ts                   MIME build + single send + sequential bulk loop
     storage.ts                 Per-organizer localStorage store (quota/campaigns/automations)
     fileParser.ts              CSV/XLSX/XLS -> Recipient[] with column detection
-    templateEngine.ts          4 default templates + {placeholder} renderer
+    templateEngine.ts          4 default templates + ${placeholder} renderer
     appsScriptGenerator.ts     Generates Google Form Apps Script code
   components/
     TopHeader.tsx              App header: 2 tabs, quota, webhook modal, auth actions
@@ -90,7 +90,7 @@ FormAutomationView -> (services only)
 2. `BulkEmailView` renders `CreateCampaignWizard` (`src/components/BulkEmailView.tsx:95-102`).
 3. Step 1: `parseRecipientFile` reads the first sheet with `XLSX.read`, detects the email and
    name columns, de-duplicates, and returns `Recipient[]` (`src/services/fileParser.ts:25-61,73-143`).
-4. Step 2: template pills + `{name}` / `{event}` / `{participant_id}` / `{login_link}` merge tags;
+4. Step 2: template pills + `${name}` / `${event}` / `${participant_id}` / `${login_link}` merge tags;
    preview is `renderTemplate(...)` (`src/services/templateEngine.ts:245-282`).
 5. Step 3: optional re-auth, then `onDispatchCampaign` (`src/components/CreateCampaignWizard.tsx:787-834`).
 6. `App.handleStartBulkSending` resolves a token (OAuth or webhook), opens the
@@ -149,5 +149,5 @@ never imports `firebase/firestore`. All persistence is browser `localStorage`/`s
   `letsmail_webhook_<uid>`; session token uses `letsmail_gmail_oauth_token`.
 - **Styling:** Tailwind utility classes inline; design tokens are raw slate/indigo/rose values.
   `src/index.css` defines only base body styles and a scrollbar.
-- **Templating:** single-brace `{variable}` placeholders, case-insensitive, with alias groups
+- **Templating:** `${variable}` placeholders, case-insensitive, with alias groups
   for `participant_id`, `event`, and `login_link` (`src/services/templateEngine.ts:248-281`).

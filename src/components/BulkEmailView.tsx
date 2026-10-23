@@ -74,8 +74,8 @@ export const BulkEmailView: React.FC<BulkEmailViewProps> = ({
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Upload your recipient spreadsheet, customize subject &amp; body with placeholders like{' '}
-            <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono text-[11px]">{'{name}'}</code> and{' '}
-            <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono text-[11px]">{'{event}'}</code>, preview for each student, and dispatch.
+            <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono text-[11px]">{'${name}'}</code> and{' '}
+            <code className="text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-mono text-[11px]">{'${event}'}</code>, preview for each student, and dispatch.
           </p>
         </div>
 
