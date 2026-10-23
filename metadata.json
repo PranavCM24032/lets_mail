@@ -1,6 +1,6 @@
 {
   "name": "Let's Mail",
-  "description": "Free multi-organizer email platform for college events with Gmail API sending, Google Form triggers, CSV/Excel parsing, and daily quota tracking.",
+  "description": "Free multi-organizer email platform for college events with Gmail API sending, CSV/Excel parsing, and daily quota tracking.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

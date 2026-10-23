@@ -78,17 +78,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </button>
 
             <button
-              onClick={() => onSelectTab('form-automation')}
+              onClick={() => onSelectTab('form-guide')}
               type="button"
               className={`px-3 sm:px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
-                currentTab === 'form-automation'
+                currentTab === 'form-guide'
                   ? 'bg-white text-indigo-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Google Form Auto-Email</span>
-              <span className="sm:hidden">Google Forms</span>
+              <span className="hidden sm:inline">Google Form Guide</span>
+              <span className="sm:hidden">Form Guide</span>
             </button>
           </nav>
 

@@ -1,7 +1,7 @@
 # Architecture — Let's Mail
 
-> Generated from the tree on disk. Every claim is traceable to a file. Only two of the
-> nine declared navigation tabs are reachable in the running app (`src/App.tsx:336-370`).
+> Generated from the tree on disk. Every claim is traceable to a file. The
+> bulk-email and form-guide tabs are reachable in the running app (`src/App.tsx:329-362`).
 
 ## Stack
 
@@ -37,7 +37,6 @@ src/
     storage.ts                 Per-organizer localStorage store (quota/campaigns/automations)
     fileParser.ts              CSV/XLSX/XLS -> Recipient[] with column detection
     templateEngine.ts          4 default templates + ${placeholder} renderer
-    appsScriptGenerator.ts     Generates Google Form Apps Script code
   components/
     TopHeader.tsx              App header: 2 tabs, quota, webhook modal, auth actions
     SignInView.tsx             Signed-out page with Google sign-in
@@ -45,7 +44,7 @@ src/
     CreateCampaignWizard.tsx   Single-page upload, compose, and dispatch composer
     ConfirmationModal.tsx      Dispatch confirmation dialog
     BulkSendingModal.tsx       Live-progress overlay during dispatch
-    FormAutomationView.tsx     Google Form tab: triggers, template editor, generated Apps Script
+    GoogleFormGuideView.tsx    Static Apps Script setup guide for Google Form emails
 ```
 
 ## Layers
@@ -66,10 +65,8 @@ together (`src/App.tsx:73-289`).
 
 ```
 main.tsx -> App.tsx
-App.tsx -> TopHeader | SignInView (signed out) | BulkEmailView | FormAutomationView | BulkSendingModal
+App.tsx -> TopHeader | SignInView (signed out) | BulkEmailView | GoogleFormGuideView | BulkSendingModal
 BulkEmailView -> CreateCampaignWizard -> ConfirmationModal
-FormAutomationView -> (services only)
-```
 
 ## Data flow
 
@@ -103,17 +100,7 @@ FormAutomationView -> (services only)
 9. On completion `App` records quota, writes a `Campaign`, and refreshes the list
    (`src/App.tsx:263-288`).
 
-### 3. Google Form automation
-1. `FormAutomationView` creates/edits a `GoogleFormAutomation` and saves it through
-   `App` -> `OrganizerStorage.saveFormAutomation` (`src/components/FormAutomationView.tsx:140-182`,
-   `src/App.tsx:357-362`, `src/services/storage.ts:103`).
-2. The "Apps Script Code" tab shows `generateFormAppsScriptCode(automation)`, an
-   `onFormSubmit(e)` handler with a lock, duplicate guard, participant-ID generation,
-   quota check, and `GmailApp.sendEmail` (`src/services/appsScriptGenerator.ts:6-167`).
-3. Copy uses `navigator.clipboard.writeText` (`src/components/FormAutomationView.tsx:210-214`).
-   The app never executes the script — the organizer pastes it into their own form's script editor.
-
-### 4. Quota
+### 3. Quota
 `OrganizerStorage.getTodayQuota` seeds a 500/day cap per organizer
 (`src/services/storage.ts:24-47`). `recordSentEmails` increments sent/failed counts and the
 current-hour bucket (`:54-63`). `App` derives `remainingAllowance` for the header and wizard
@@ -127,7 +114,6 @@ current-hour bucket (`:54-63`). `App` derives `remainingAllowance` for the heade
 | Google OAuth | `src/services/auth.ts:17-23` | Scope `https://www.googleapis.com/auth/gmail.send`, `prompt: select_account` |
 | Gmail REST API | `src/services/gmail.ts:177` | `POST /gmail/v1/users/me/messages/send` with a base64url MIME body |
 | Apps Script webhook | `src/services/gmail.ts:107` | Arbitrary user URL stored at `localStorage['letsmail_webhook_<uid>']` |
-| Google Form / Sheets | `src/services/appsScriptGenerator.ts` | Only as generated code for the user to paste; no runtime call |
 
 **Environment variables:** no `import.meta.env` / `process.env` reference exists in `src/`.
 `.env.example` declares `GEMINI_API_KEY` and `APP_URL`, but neither is read by the app.
@@ -143,7 +129,7 @@ never imports `firebase/firestore`. All persistence is browser `localStorage`/`s
 - **State:** `useState` + `useRef` only; no reducer/context/state library. Cross-cutting
   state lives in `App`; leaf components are prop-driven.
 - **Navigation:** a single `NavigationTab` state (`src/App.tsx:38`) with `&&` branches;
-  no router. Tabs other than `bulk-email` and `form-automation` have no view.
+  no router. Tabs other than `bulk-email` and `form-guide` have no view.
 - **Persistence:** `OrganizerStorage` namespaces keys as
   `letsmail_v1_<uid>_<category>` (`src/services/storage.ts:3,19-21`). Webhook URL uses
   `letsmail_webhook_<uid>`; session token uses `letsmail_gmail_oauth_token`.

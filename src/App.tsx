@@ -13,7 +13,6 @@ import {
   OrganizerUser,
   Campaign,
   Recipient,
-  GoogleFormAutomation,
   DailyQuotaUsage,
   RecipientDeliveryLog,
   NavigationTab,
@@ -25,7 +24,7 @@ import { executeBulkCampaignSending } from './services/gmail';
 import { TopHeader } from './components/TopHeader';
 import { SignInView } from './components/SignInView';
 import { BulkEmailView } from './components/BulkEmailView';
-import { FormAutomationView } from './components/FormAutomationView';
+import { GoogleFormGuideView } from './components/GoogleFormGuideView';
 import { BulkSendingModal } from './components/BulkSendingModal';
 
 export default function App() {
@@ -50,7 +49,6 @@ export default function App() {
     lastUpdated: new Date().toISOString()
   });
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [formAutomations, setFormAutomations] = useState<GoogleFormAutomation[]>([]);
 
   // --- Bulk Dispatch Modal State ---
   const [isBulkSendingModalOpen, setIsBulkSendingModalOpen] = useState(false);
@@ -107,9 +105,6 @@ export default function App() {
 
     const loadedCampaigns = orgStorage.getCampaigns();
     setCampaigns(loadedCampaigns);
-
-    const loadedAutomations = orgStorage.getFormAutomations();
-    setFormAutomations(loadedAutomations);
   }, [organizer]);
 
   // Keep the quota display in sync with Gmail's reset (midnight Pacific),
@@ -359,24 +354,7 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'form-automation' && (
-          <FormAutomationView
-            organizer={organizer!}
-            automations={formAutomations}
-            onSaveAutomation={(auto) => {
-              if (storage) {
-                storage.saveFormAutomation(auto);
-                setFormAutomations(storage.getFormAutomations());
-              }
-            }}
-            onDeleteAutomation={(id) => {
-              if (storage) {
-                storage.deleteFormAutomation(id);
-                setFormAutomations(storage.getFormAutomations());
-              }
-            }}
-          />
-        )}
+        {currentTab === 'form-guide' && <GoogleFormGuideView />}
       </main>
 
       {/* Live Bulk Sending Execution Modal */}

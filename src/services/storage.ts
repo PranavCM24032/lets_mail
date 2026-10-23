@@ -1,4 +1,4 @@
-import { Campaign, DailyQuotaUsage, GoogleFormAutomation } from '../types';
+import { Campaign, DailyQuotaUsage } from '../types';
 
 const PREFIX = 'letsmail_v1_';
 
@@ -109,30 +109,4 @@ export class OrganizerStorage {
     localStorage.setItem(this.getKey('campaigns'), JSON.stringify(campaigns));
   }
 
-  // --- Google Form Automations Management ---
-  public getFormAutomations(): GoogleFormAutomation[] {
-    const raw = localStorage.getItem(this.getKey('form_automations'));
-    if (!raw) return [];
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  }
-
-  public saveFormAutomation(automation: GoogleFormAutomation): void {
-    const list = this.getFormAutomations();
-    const index = list.findIndex((a) => a.id === automation.id);
-    if (index >= 0) {
-      list[index] = automation;
-    } else {
-      list.unshift(automation);
-    }
-    localStorage.setItem(this.getKey('form_automations'), JSON.stringify(list));
-  }
-
-  public deleteFormAutomation(id: string): void {
-    const list = this.getFormAutomations().filter((a) => a.id !== id);
-    localStorage.setItem(this.getKey('form_automations'), JSON.stringify(list));
-  }
 }

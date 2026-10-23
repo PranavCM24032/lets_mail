@@ -19,7 +19,7 @@ export interface Recipient {
 
 export type NavigationTab =
   | 'bulk-email'
-  | 'form-automation'
+  | 'form-guide'
   | 'overview'
   | 'campaigns'
   | 'create-campaign'
@@ -56,32 +56,6 @@ export interface Campaign {
   deliveryLogs: RecipientDeliveryLog[];
   completedAt?: string;
   scheduledFor?: string;
-}
-
-export interface GoogleFormAutomation {
-  id: string;
-  organizerUid: string;
-  formName: string;
-  formLink?: string;
-  eventName: string;
-  emailColumn: string;
-  nameColumn: string;
-  participantIdPrefix: string;
-  subject: string;
-  templateBody: string;
-  enabled: boolean;
-  createdAt: string;
-  lastTriggered?: string;
-  totalSent: number;
-  recentLogs: Array<{
-    id: string;
-    studentEmail: string;
-    studentName: string;
-    participantId: string;
-    timestamp: string;
-    status: 'success' | 'error';
-    details?: string;
-  }>;
 }
 
 export interface DailyQuotaUsage {

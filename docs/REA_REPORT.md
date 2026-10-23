@@ -24,7 +24,7 @@ this repo: auth is Firebase Auth, and all workspace data lives in `localStorage`
 | `src/main.tsx:5` | `createRoot(...).render(<App />)` — no providers |
 | `src/App.tsx:31` | Root component; auth gate, tab switch, workspace bootstrap, dispatch |
 | `src/App.tsx:292` | Signed-out branch -> `SignInView` |
-| `src/App.tsx:336,353` | The only two reachable views: `bulk-email`, `form-automation` |
+| `src/App.tsx:329-362` | Reachable views: `bulk-email`, `form-guide` |
 
 No server bootstrap, CLI, or API route exists in the repo despite `express` being listed.
 
@@ -34,14 +34,13 @@ Layers: entry (`main.tsx`) -> shell/state (`App.tsx`) -> UI (`src/components`) -
 (`src/services`) -> types (`src/types`). Services never import components.
 
 ```
-App -> TopHeader, SignInView, BulkEmailView, FormAutomationView, BulkSendingModal
+App -> TopHeader, SignInView, BulkEmailView, GoogleFormGuideView, BulkSendingModal
 BulkEmailView -> CreateCampaignWizard -> ConfirmationModal
-FormAutomationView -> (services only)
 ```
 
-The `NavigationTab` type declares nine tabs (`src/types/index.ts:20-29`); only `bulk-email`
-and `form-automation` have a view. The other seven (`overview`, `campaigns`,
-`create-campaign`, `scheduled`, `contacts`, `activity`, `settings`) are unreachable.
+The `NavigationTab` type declares several tabs (`src/types/index.ts:20-30`); only `bulk-email`
+and `form-guide` have views. The others (`overview`, `campaigns`, `create-campaign`,
+`scheduled`, `contacts`, `activity`, `settings`) are unreachable.
 
 Thirteen previously unreferenced legacy components (dashboard, sidebar, history, settings,
 scheduled, contacts, upload, composer, etc.) were pruned; see the baseline commit
@@ -64,13 +63,7 @@ spreadsheet (`fileParser.ts:25-61`) -> step 2 renders templates
 Transport order: webhook (`gmail.ts:105-146`) -> Gmail REST (`gmail.ts:166-224`).
 Progress drives `BulkSendingModal` via `App.tsx:251-257`.
 
-### C. Google Form automation
-`FormAutomationView` creates/saves a `GoogleFormAutomation` (`FormAutomationView.tsx:140-182`)
--> `OrganizerStorage.saveFormAutomation` (`storage.ts:103`) -> "Apps Script Code" renders
-`generateFormAppsScriptCode` (`appsScriptGenerator.ts:6`) -> clipboard
-(`FormAutomationView.tsx:210-214`). The generated script, not this app, sends form emails.
-
-### D. Quota
+### C. Quota
 Initialized at 500/day (`storage.ts:24-47`), incremented after a batch (`storage.ts:54-63`,
 called from `App.tsx:267`), displayed as `capLimit - sentCount` (`App.tsx:317`).
 Advisory only: the send engine does not stop at the cap.
@@ -80,14 +73,13 @@ Advisory only: the send engine does not stop at the cap.
 **Internal service API**
 - `auth`: `initAuth`, `googleSignIn`, `logout` (+ `auth` instance, `GMAIL_SEND_SCOPE`)
 - `gmail`: `sendEmailViaGmailApi`, `executeBulkCampaignSending`
-- `storage`: `OrganizerStorage` — quota, campaigns, form automations
+- `storage`: `OrganizerStorage` — quota and campaigns
 - `fileParser`: `parseRecipientFile`, `reprocessWithEmailColumn`, `generateSampleCsvContent`
   (plus internal `isValidEmail`)
 - `templateEngine`: `DEFAULT_TEMPLATES`, `renderTemplate`
-- `appsScriptGenerator`: `generateFormAppsScriptCode`
 
 **Browser storage**
-- `letsmail_v1_<uid>_quota_<YYYY-MM-DD>`, `_campaigns`, `_form_automations` (`storage.ts:3-21`)
+- `letsmail_v1_<uid>_quota_<YYYY-MM-DD>`, `_campaigns` (`storage.ts:3-21`)
 - `letsmail_gmail_oauth_token` (sessionStorage), `letsmail_webhook_<uid>` (localStorage)
 
 **External:** Firebase Auth; Google OAuth `gmail.send`; Gmail REST
@@ -95,19 +87,17 @@ Advisory only: the send engine does not stop at the cap.
 No Firestore, no Gemini, no env vars consumed by `src/`.
 
 **Types:** `OrganizerUser`, `Recipient`, `NavigationTab`, `CampaignStatus`,
-`RecipientDeliveryLog`, `Campaign` (`types/index.ts:43`), `GoogleFormAutomation` (`:61`),
+`RecipientDeliveryLog`, `Campaign` (`types/index.ts:43`),
 `DailyQuotaUsage` (`:86`), `EmailTemplate` (`:97`).
 
 ## Hot spots
 
-1. **`FormAutomationView.tsx` is a 51 KB / 1016-line god-component** with three tabs, an editor,
-   and generated-code display in one file.
-2. **Transport failure semantics diverge.** A webhook network error is reported as success
+1. **Transport failure semantics diverge.** A webhook network error is reported as success
    (`gmail.ts:139-145`) and the HTTP status is never checked; the REST path does check status
    (`gmail.ts:186-210`). No 429/backoff handling.
-3. **No server-side workspace state.** Campaigns, automations, and quota live only in browser
+2. **No server-side workspace state.** Campaigns and quota live only in browser
    `localStorage`, so data is not shared across devices or organizers.
-4. **Firestore and Gemini are declared but not implemented**: `firestore.rules` has no caller;
+3. **Firestore and Gemini are declared but not implemented**: `firestore.rules` has no caller;
    `@google/genai` and `GEMINI_API_KEY` are unused.
 5. **Quota is advisory, not enforced.** `ConfirmationModal` promises pausing at the cap
    (`ConfirmationModal.tsx:89`); the engine never checks the remaining allowance.
