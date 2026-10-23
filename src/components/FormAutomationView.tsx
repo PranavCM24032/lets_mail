@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Copy,
@@ -11,11 +11,19 @@ import {
   Eye,
   Code2,
   RotateCcw,
-  CheckCheck
+  CheckCheck,
+  Bold,
+  Italic,
+  Underline,
+  List,
+  ListOrdered,
+  Link2,
+  Eraser,
+  ExternalLink
 } from 'lucide-react';
 import { GoogleFormAutomation, OrganizerUser, Recipient } from '../types';
 import { generateFormAppsScriptCode } from '../services/appsScriptGenerator';
-import { renderTemplate } from '../services/templateEngine';
+import { extractMergeFields, renderTemplate } from '../services/templateEngine';
 
 interface FormAutomationViewProps {
   organizer: OrganizerUser;
@@ -85,21 +93,30 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
   // Sub-view within selected trigger: 'edit-message' | 'script'
   const [triggerView, setTriggerView] = useState<'edit-message' | 'script'>('edit-message');
 
-  // Preview toggle in message editor
-  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
-
   // Active trigger edit form state
   const [editFormName, setEditFormName] = useState('');
+  const [editFormLink, setEditFormLink] = useState('');
   const [editEventName, setEditEventName] = useState('');
   const [editEmailColumn, setEditEmailColumn] = useState('');
   const [editNameColumn, setEditNameColumn] = useState('');
   const [editParticipantPrefix, setEditParticipantPrefix] = useState('');
   const [editSubject, setEditSubject] = useState('');
   const [editBody, setEditBody] = useState('');
+  const [composeView, setComposeView] = useState<'editor' | 'code'>('editor');
+  const [editorVersion, setEditorVersion] = useState(0);
+  const [hasRenderedPreview, setHasRenderedPreview] = useState(false);
+  const [previewSnapshot, setPreviewSnapshot] = useState<{
+    subject: string;
+    body: string;
+    fields: Array<{ token: string; value: string; missing: boolean }>;
+    at: string;
+  } | null>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   // New Form builder state
   const [newFormName, setNewFormName] = useState('');
+  const [newFormLink, setNewFormLink] = useState('');
   const [newEventName, setNewEventName] = useState('');
   const [newEmailColumn, setNewEmailColumn] = useState('Email Address');
   const [newNameColumn, setNewNameColumn] = useState('Full Name');
@@ -114,14 +131,26 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
   useEffect(() => {
     if (selectedAutomation) {
       setEditFormName(selectedAutomation.formName);
+      setEditFormLink(selectedAutomation.formLink || '');
       setEditEventName(selectedAutomation.eventName);
       setEditEmailColumn(selectedAutomation.emailColumn);
       setEditNameColumn(selectedAutomation.nameColumn);
       setEditParticipantPrefix(selectedAutomation.participantIdPrefix);
       setEditSubject(selectedAutomation.subject);
       setEditBody(selectedAutomation.templateBody);
+      setHasRenderedPreview(false);
+      setPreviewSnapshot(null);
+      setEditorVersion((v) => v + 1);
     }
   }, [selectedAutomation]);
+
+  // Keep the rich editor in sync when switching triggers, tabs, or applying presets.
+  useEffect(() => {
+    if (composeView === 'editor' && editorRef.current) {
+      editorRef.current.innerHTML = editBody;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeView, editorVersion, selectedAutomation]);
 
   // Keep selectedAutomation pointing to existing item if list updates
   useEffect(() => {
@@ -135,6 +164,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
       id: `form_auto_${Date.now()}`,
       organizerUid: organizer.uid,
       formName: newFormName,
+      formLink: newFormLink.trim(),
       eventName: newEventName,
       emailColumn: newEmailColumn,
       nameColumn: newNameColumn,
@@ -160,6 +190,7 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
     const updated: GoogleFormAutomation = {
       ...selectedAutomation,
       formName: editFormName.trim() || selectedAutomation.formName,
+      formLink: editFormLink.trim(),
       eventName: editEventName.trim() || selectedAutomation.eventName,
       emailColumn: editEmailColumn.trim() || selectedAutomation.emailColumn,
       nameColumn: editNameColumn.trim() || selectedAutomation.nameColumn,
@@ -170,6 +201,8 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
 
     onSaveAutomation(updated);
     setSelectedAutomation(updated);
+    setHasRenderedPreview(false);
+    setPreviewSnapshot(null);
     setSaveSuccessMessage('Email message & settings updated! Google Apps Script code regenerated.');
     setTimeout(() => setSaveSuccessMessage(null), 4000);
   };
@@ -213,10 +246,11 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
       setEditSubject((prev) => `${prev} ${tag}`);
     } else {
       setEditBody((prev) => `${prev}\n${tag}`);
+      setEditorVersion((v) => v + 1);
     }
   };
 
-  // Recipient values used only to render the live template preview.
+  // Recipient values used only to render the template preview.
   const previewRecipient: Recipient = {
     id: 'preview',
     email: organizer.email,
@@ -230,15 +264,67 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
     isValid: true
   };
 
-  const renderedPreviewSubject = renderTemplate(
-    editSubject || currentDisplay.subject,
-    previewRecipient
-  );
+  const syncEditor = () => {
+    if (editorRef.current) {
+      setEditBody(editorRef.current.innerHTML);
+    }
+  };
 
-  const renderedPreviewBody = renderTemplate(
-    editBody || currentDisplay.templateBody,
-    previewRecipient
-  );
+  const runEditorCommand = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    syncEditor();
+  };
+
+  const insertLink = () => {
+    const url = window.prompt('Enter the link URL:', 'https://');
+    if (!url) return;
+    runEditorCommand('createLink', url);
+  };
+
+  const FORM_BUILTIN_FIELDS = new Set([
+    'name',
+    'email',
+    'event',
+    'event_name',
+    'participant_id',
+    'participantid',
+    'id',
+    'login',
+    'login_link',
+    'link',
+    'url'
+  ]);
+
+  const handleRenderPreview = () => {
+    const bodyHtml = editorRef.current?.innerHTML ?? editBody;
+    const subject = editSubject || currentDisplay.subject;
+    setEditBody(bodyHtml);
+
+    const fields = extractMergeFields(`${subject} ${bodyHtml}`).map((key) => {
+      const token = `\${${key}}`;
+      const value = renderTemplate(token, previewRecipient);
+      const normalized = key.trim().toLowerCase().replace(/[\s-]+/g, '_');
+      const missing = value === token && FORM_BUILTIN_FIELDS.has(normalized);
+      return {
+        token,
+        value: value === token ? 'Filled from the form response' : value,
+        missing
+      };
+    });
+
+    setPreviewSnapshot({
+      subject: renderTemplate(subject, previewRecipient),
+      body: renderTemplate(bodyHtml, previewRecipient),
+      fields,
+      at: new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    });
+    setHasRenderedPreview(true);
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -446,191 +532,420 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
               {/* SUB-VIEW 1: EDIT MESSAGE & TEMPLATE */}
               {triggerView === 'edit-message' && (
                 <div className="space-y-5 animate-in fade-in duration-150">
-                  {/* Preset Message Picker */}
-                  <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2">
-                    <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      Apply Ready-Made Template Preset:
-                    </span>
-                    <div className="flex flex-wrap gap-2">
-                      {MESSAGE_PRESETS.map((preset) => (
-                        <button
-                          key={preset.name}
-                          type="button"
-                          onClick={() => {
-                            setEditSubject(preset.subject);
-                            setEditBody(preset.body);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 text-[11px] font-medium text-slate-700 transition cursor-pointer"
-                        >
-                          {preset.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Form & Event Details Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <label className="block text-slate-700 font-medium mb-1">Form Name</label>
-                      <input
-                        type="text"
-                        value={editFormName}
-                        onChange={(e) => setEditFormName(e.target.value)}
-                        placeholder="Google Form Name"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-medium mb-1">Event Name</label>
-                      <input
-                        type="text"
-                        value={editEventName}
-                        onChange={(e) => setEditEventName(e.target.value)}
-                        placeholder="e.g. National Hackathon 2026"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Column Mappings Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <label className="block text-slate-700 font-medium mb-1">
-                        Form Email Column
-                      </label>
-                      <input
-                        type="text"
-                        value={editEmailColumn}
-                        onChange={(e) => setEditEmailColumn(e.target.value)}
-                        placeholder="Email Address"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-medium mb-1">
-                        Form Name Column
-                      </label>
-                      <input
-                        type="text"
-                        value={editNameColumn}
-                        onChange={(e) => setEditNameColumn(e.target.value)}
-                        placeholder="Full Name"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-slate-700 font-medium mb-1">ID Prefix</label>
-                      <input
-                        type="text"
-                        value={editParticipantPrefix}
-                        onChange={(e) => setEditParticipantPrefix(e.target.value)}
-                        placeholder="REG-2026-"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Subject Line Editor with Tag Buttons */}
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-slate-700 font-medium">Confirmation Email Subject</label>
-                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                        <span>Insert tag:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertTag('${event}', 'subject')}
-                          className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
-                        >
-                          +{'${event}'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertTag('${participant_id}', 'subject')}
-                          className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
-                        >
-                          +{'${participant_id}'}
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      type="text"
-                      value={editSubject}
-                      onChange={(e) => setEditSubject(e.target.value)}
-                      placeholder="e.g. Confirmed: ${event} Pass — ID ${participant_id}"
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                  </div>
-
-                  {/* HTML Body Editor & Variable Pills */}
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <label className="block text-slate-700 font-medium">
-                        Confirmation Email Message (HTML &amp; Text)
-                      </label>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] text-slate-400">Quick Tags:</span>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertTag('${name}', 'body')}
-                          className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
-                        >
-                          +{'${name}'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertTag('${event}', 'body')}
-                          className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
-                        >
-                          +{'${event}'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertTag('${participant_id}', 'body')}
-                          className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
-                        >
-                          +{'${participant_id}'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowHtmlPreview(!showHtmlPreview)}
-                          className={`ml-2 px-2 py-0.5 rounded border text-[11px] font-medium flex items-center gap-1 cursor-pointer ${
-                            showHtmlPreview
-                              ? 'bg-indigo-600 text-white border-indigo-600'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          <Eye className="w-3 h-3" />
-                          <span>{showHtmlPreview ? 'Hide Preview' : 'Live Preview'}</span>
-                        </button>
+                  {/* STEP 1: FORM DETAILS */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[11px] font-semibold flex items-center justify-center">
+                        1
+                      </span>
+                      <div>
+                        <h4 className="font-semibold text-sm text-slate-900">Form Details</h4>
+                        <p className="text-[11px] text-slate-500">
+                          Paste your Google Form link and map its response columns.
+                        </p>
                       </div>
                     </div>
 
-                    {showHtmlPreview ? (
-                      /* Live Visual Preview of Student Email */
-                      <div className="space-y-2 p-4 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="flex items-center justify-between text-[11px] pb-2 border-b border-slate-200">
-                          <span className="font-semibold text-slate-700">Student Inbox Preview:</span>
-                          <span className="text-slate-400">Preview recipient: you</span>
-                        </div>
-                        <div className="text-xs font-semibold text-slate-900 pb-2">
-                          Subject: <span className="font-normal text-slate-700">{renderedPreviewSubject}</span>
-                        </div>
-                        <div
-                          className="p-4 rounded-lg bg-white border border-slate-200 shadow-2xs text-xs prose prose-sm max-w-none"
-                          dangerouslySetInnerHTML={{ __html: renderedPreviewBody }}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Form Name</label>
+                        <input
+                          type="text"
+                          value={editFormName}
+                          onChange={(e) => setEditFormName(e.target.value)}
+                          placeholder="Google Form Name"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                       </div>
-                    ) : (
-                      /* Raw HTML/Text Textarea */
-                      <textarea
-                        value={editBody}
-                        onChange={(e) => setEditBody(e.target.value)}
-                        rows={8}
-                        className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-3.5 rounded-xl border border-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed"
-                        placeholder="Write confirmation email message..."
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Event Name</label>
+                        <input
+                          type="text"
+                          value={editEventName}
+                          onChange={(e) => setEditEventName(e.target.value)}
+                          placeholder="e.g. National Hackathon 2026"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-slate-700 font-medium mb-1">
+                          Google Form Link
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={editFormLink}
+                            onChange={(e) => setEditFormLink(e.target.value)}
+                            placeholder="https://docs.google.com/forms/d/..."
+                            className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                          {editFormLink.trim() && (
+                            <a
+                              href={editFormLink.trim()}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-[11px] font-medium shrink-0"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Open
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">
+                          Form Email Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editEmailColumn}
+                          onChange={(e) => setEditEmailColumn(e.target.value)}
+                          placeholder="Email Address"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">
+                          Form Name Column
+                        </label>
+                        <input
+                          type="text"
+                          value={editNameColumn}
+                          onChange={(e) => setEditNameColumn(e.target.value)}
+                          placeholder="Full Name"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">ID Prefix</label>
+                        <input
+                          type="text"
+                          value={editParticipantPrefix}
+                          onChange={(e) => setEditParticipantPrefix(e.target.value)}
+                          placeholder="REG-2026-"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* STEP 2: COMPOSE EMAIL */}
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <div className="flex items-start justify-between gap-3 pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[11px] font-semibold flex items-center justify-center">
+                          2
+                        </span>
+                        <div>
+                          <h4 className="font-semibold text-sm text-slate-900">Compose Email</h4>
+                          <p className="text-[11px] text-slate-500">
+                            Write the email once, then render the preview below.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-slate-500 shrink-0">
+                        Sends to: <strong className="text-slate-900">{editEmailColumn || 'Email column'}</strong>
+                      </span>
+                    </div>
+
+                    {/* Subject Line */}
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-slate-700 font-medium">Subject Line</label>
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                          <span>Insert tag:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleInsertTag('${event}', 'subject')}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
+                          >
+                            +{'${event}'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInsertTag('${participant_id}', 'subject')}
+                            className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10.5px] cursor-pointer"
+                          >
+                            +{'${participant_id}'}
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        value={editSubject}
+                        onChange={(e) => setEditSubject(e.target.value)}
+                        placeholder="e.g. Confirmed: ${event} Pass — ID ${participant_id}"
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 focus:outline-hidden focus:border-indigo-500 font-medium"
                       />
+                    </div>
+
+                    {/* Message Editor */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg">
+                          <button
+                            onClick={() => setComposeView('editor')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                              composeView === 'editor'
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            Write
+                          </button>
+                          <button
+                            onClick={() => setComposeView('code')}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition cursor-pointer ${
+                              composeView === 'code'
+                                ? 'bg-white text-slate-900 shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            HTML
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className="text-[11px] text-slate-400">Quick tags:</span>
+                          {['${name}', '${event}', '${participant_id}'].map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => handleInsertTag(tag, 'body')}
+                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono text-[10.5px] cursor-pointer border border-indigo-100"
+                            >
+                              +{tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {composeView === 'editor' ? (
+                        <div>
+                          <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 bg-slate-50 border border-slate-200 border-b-0 rounded-t-lg">
+                            {[
+                              { command: 'bold', icon: Bold, label: 'Bold' },
+                              { command: 'italic', icon: Italic, label: 'Italic' },
+                              { command: 'underline', icon: Underline, label: 'Underline' },
+                              { command: 'insertUnorderedList', icon: List, label: 'Bullet list' },
+                              { command: 'insertOrderedList', icon: ListOrdered, label: 'Numbered list' }
+                            ].map(({ command, icon: Icon, label }) => (
+                              <button
+                                key={command}
+                                type="button"
+                                title={label}
+                                aria-label={label}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => runEditorCommand(command)}
+                                className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                              >
+                                <Icon className="w-3.5 h-3.5" />
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              title="Insert link"
+                              aria-label="Insert link"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={insertLink}
+                              className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Clear formatting"
+                              aria-label="Clear formatting"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => runEditorCommand('removeFormat')}
+                              className="p-1.5 rounded-md text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-2xs transition cursor-pointer"
+                            >
+                              <Eraser className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="ml-auto text-[10px] text-slate-400 hidden sm:inline">
+                              Select text, then format
+                            </span>
+                          </div>
+
+                          <div
+                            ref={editorRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onInput={(e) => setEditBody(e.currentTarget.innerHTML)}
+                            data-placeholder="Write the confirmation email students will receive..."
+                            className="min-h-[280px] max-h-[520px] overflow-y-auto bg-white rounded-b-lg border border-slate-200 p-4 text-sm text-slate-800 leading-relaxed focus:outline-hidden focus:border-indigo-500 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline [&_p]:mb-2"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <textarea
+                            value={editBody}
+                            onChange={(e) => setEditBody(e.target.value)}
+                            spellCheck={false}
+                            rows={14}
+                            className="w-full bg-slate-900 text-slate-100 font-mono text-xs p-4 rounded-xl border border-slate-800 focus:outline-hidden focus:border-indigo-500"
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Raw HTML editor — placeholders like {'${name}'} are filled from the form response.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Presets */}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 space-y-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                          <p className="text-xs font-semibold text-slate-800">
+                            Optional: start from a template
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {MESSAGE_PRESETS.map((preset) => (
+                            <button
+                              key={preset.name}
+                              type="button"
+                              onClick={() => {
+                                setEditSubject(preset.subject);
+                                setEditBody(preset.body);
+                                setEditorVersion((v) => v + 1);
+                              }}
+                              className="p-3 rounded-lg bg-white border border-slate-200 text-left text-slate-600 hover:border-indigo-300 hover:bg-indigo-50/40 transition cursor-pointer"
+                            >
+                              <p className="text-xs font-medium truncate">{preset.name}</p>
+                              <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
+                                {preset.subject}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* STEP 3: PREVIEW */}
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-2 border-b border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-[11px] font-semibold flex items-center justify-center">
+                          3
+                        </span>
+                        <div>
+                          <h4 className="font-semibold text-sm text-slate-900">Preview</h4>
+                          <p className="text-[11px] text-slate-500">
+                            Preview uses sample values. Every submission is personalized at send time.
+                          </p>
+                        </div>
+                      </div>
+                      {hasRenderedPreview && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 shrink-0">
+                          <button
+                            onClick={handleRenderPreview}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium transition cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Render Again
+                          </button>
+                          {previewSnapshot && (
+                            <span className="text-[10px] text-slate-400">
+                              Rendered {previewSnapshot.at}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {!hasRenderedPreview || !previewSnapshot ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center space-y-3">
+                        <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto">
+                          <FileText className="w-4 h-4 text-slate-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            Preview is not rendered yet
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                            Click Render Preview to check the subject and every merge field in the email.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleRenderPreview}
+                          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          Render Preview
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-2">
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-500">To:</span>
+                            <span className="font-mono text-slate-900 font-medium truncate max-w-sm">
+                              {previewRecipient.email}
+                            </span>
+                          </div>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-500">Subject:</span>
+                            <span className="font-semibold text-slate-900 truncate max-w-sm">
+                              {previewSnapshot.subject}
+                            </span>
+                          </div>
+                          <div className="pt-2 mt-1 border-t border-slate-200 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-600">Merge field check</span>
+                              <span className="text-[10px] text-slate-500">
+                                {previewSnapshot.fields.filter((field) => !field.missing).length}/
+                                {previewSnapshot.fields.length} loaded
+                              </span>
+                            </div>
+                            {previewSnapshot.fields.length === 0 ? (
+                              <p className="text-[10px] text-slate-400">
+                                No merge fields used in this template.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {previewSnapshot.fields.map((field) => (
+                                  <div
+                                    key={field.token}
+                                    className={`rounded-md border px-2 py-1.5 ${
+                                      field.missing
+                                        ? 'border-rose-200 bg-rose-50'
+                                        : 'border-slate-200 bg-white'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <code className="font-mono text-[10px] text-slate-700">
+                                        {field.token}
+                                      </code>
+                                      <span
+                                        className={`text-[9px] font-semibold uppercase tracking-wide ${
+                                          field.missing ? 'text-rose-700' : 'text-emerald-700'
+                                        }`}
+                                      >
+                                        {field.missing ? 'missing' : 'loaded'}
+                                      </span>
+                                    </div>
+                                    <p
+                                      className={`mt-1 text-[10px] break-all ${
+                                        field.missing ? 'text-rose-700' : 'text-slate-500'
+                                      }`}
+                                    >
+                                      {field.missing ? 'No matching form column' : field.value}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div
+                          className="min-h-[260px] overflow-hidden rounded-xl border border-slate-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-indigo-600 [&_a]:underline"
+                          dangerouslySetInnerHTML={{ __html: previewSnapshot.body }}
+                        />
+                      </>
                     )}
                   </div>
 
@@ -648,7 +963,14 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                             setEditSubject(selectedAutomation.subject);
                             setEditBody(selectedAutomation.templateBody);
                             setEditFormName(selectedAutomation.formName);
+                            setEditFormLink(selectedAutomation.formLink || '');
                             setEditEventName(selectedAutomation.eventName);
+                            setEditEmailColumn(selectedAutomation.emailColumn);
+                            setEditNameColumn(selectedAutomation.nameColumn);
+                            setEditParticipantPrefix(selectedAutomation.participantIdPrefix);
+                            setEditorVersion((v) => v + 1);
+                            setHasRenderedPreview(false);
+                            setPreviewSnapshot(null);
                           }
                         }}
                         className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
@@ -751,6 +1073,18 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
                 onChange={(e) => setNewEventName(e.target.value)}
                 placeholder="e.g. Annual Cultural Night 2026"
                 className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-slate-700 font-medium mb-1">
+                Google Form Link
+              </label>
+              <input
+                type="url"
+                value={newFormLink}
+                onChange={(e) => setNewFormLink(e.target.value)}
+                placeholder="https://docs.google.com/forms/d/..."
+                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
             <div>
@@ -859,10 +1193,21 @@ export const FormAutomationView: React.FC<FormAutomationViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
               <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-semibold text-xs flex items-center justify-center">1</span>
-              <p className="font-semibold text-slate-900 text-xs">Open Linked Sheet</p>
+              <p className="font-semibold text-slate-900 text-xs">Open Your Google Form</p>
               <p className="text-[11px] text-slate-500 leading-relaxed">
                 In your Google Form, click the <strong>Responses</strong> tab and click <strong>Link to Sheets</strong> to open your response spreadsheet.
               </p>
+              {currentDisplay.formLink && (
+                <a
+                  href={currentDisplay.formLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Open saved Google Form
+                </a>
+              )}
             </div>
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
               <span className="w-6 h-6 rounded-full bg-slate-900 text-white font-semibold text-xs flex items-center justify-center">2</span>

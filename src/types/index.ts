@@ -62,6 +62,7 @@ export interface GoogleFormAutomation {
   id: string;
   organizerUid: string;
   formName: string;
+  formLink?: string;
   eventName: string;
   emailColumn: string;
   nameColumn: string;
