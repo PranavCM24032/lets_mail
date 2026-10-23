@@ -17,7 +17,13 @@ import {
 } from 'lucide-react';
 import { Recipient, EmailTemplate, OrganizerUser, EmailAttachment } from '../types';
 import { parseRecipientFile, ParseResult, generateSampleCsvContent, reprocessWithEmailColumn } from '../services/fileParser';
-import { DEFAULT_TEMPLATES, hasRecipientDataField, renderTemplate } from '../services/templateEngine';
+import {
+  DEFAULT_TEMPLATES,
+  extractMergeFields,
+  hasRecipientDataField,
+  isFallbackMergeField,
+  renderTemplate
+} from '../services/templateEngine';
 import { sendEmailViaGmailApi } from '../services/gmail';
 import { ConfirmationModal } from './ConfirmationModal';
 
@@ -302,33 +308,16 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
   const renderedSubject = renderTemplate(effectiveSubjectTemplate, currentPreviewRecipient);
   const renderedBody = renderTemplate(bodyTemplate, currentPreviewRecipient);
 
-  const previewFieldChecks = Array.from(
-    new Set([
-      'name',
-      'login',
-      ...(`${effectiveSubjectTemplate} ${bodyTemplate}`
-        .match(/\$\{[^{}]+\}/g)
-        ?.map((token) => token.slice(2, -1).trim())
-        .filter(Boolean) || [])
-    ])
+  // Only validate the merge fields that are actually used in this template.
+  // Custom columns are matched dynamically, so new attributes need no code change.
+  const previewFieldChecks = extractMergeFields(
+    `${effectiveSubjectTemplate} ${bodyTemplate}`
   ).map((key) => {
     const token = `\${${key}}`;
     const value = renderTemplate(token, currentPreviewRecipient);
-    const keyLower = key.trim().toLowerCase().replace(/[\s-]+/g, '_');
-    const fallbackField = [
-      'event',
-      'event_name',
-      'participant_id',
-      'participantid',
-      'id',
-      'login',
-      'login_link',
-      'link',
-      'url'
-    ].includes(keyLower);
     const missing =
       value === token ||
-      (fallbackField && !hasRecipientDataField(currentPreviewRecipient, key));
+      (isFallbackMergeField(key) && !hasRecipientDataField(currentPreviewRecipient, key));
 
     return { token, value, missing };
   });
@@ -904,41 +893,47 @@ export const CreateCampaignWizard: React.FC<CreateCampaignWizardProps> = ({
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      Excel headers are matched case-insensitively, so Name, name, and NAME all
-                      work. Login also matches login_link.
+                      Only tags used in this template are checked. Any Excel column matches
+                      case-insensitively, so new columns work without code changes.
                     </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {previewFieldChecks.map((field) => (
-                        <div
-                          key={field.token}
-                          className={`rounded-md border px-2 py-1.5 ${
-                            field.missing
-                              ? 'border-rose-200 bg-rose-50'
-                              : 'border-slate-200 bg-white'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <code className="font-mono text-[10px] text-slate-700">
-                              {field.token}
-                            </code>
-                            <span
-                              className={`text-[9px] font-semibold uppercase tracking-wide ${
-                                field.missing ? 'text-rose-700' : 'text-emerald-700'
-                              }`}
-                            >
-                              {field.missing ? 'missing' : 'loaded'}
-                            </span>
-                          </div>
-                          <p
-                            className={`mt-1 text-[10px] break-all ${
-                              field.missing ? 'text-rose-700' : 'text-slate-500'
+                    {previewFieldChecks.length === 0 ? (
+                      <p className="text-[10px] text-slate-400">
+                        No merge fields used in this template.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {previewFieldChecks.map((field) => (
+                          <div
+                            key={field.token}
+                            className={`rounded-md border px-2 py-1.5 ${
+                              field.missing
+                                ? 'border-rose-200 bg-rose-50'
+                                : 'border-slate-200 bg-white'
                             }`}
                           >
-                            {field.missing ? 'No matching Excel column' : field.value}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <code className="font-mono text-[10px] text-slate-700">
+                                {field.token}
+                              </code>
+                              <span
+                                className={`text-[9px] font-semibold uppercase tracking-wide ${
+                                  field.missing ? 'text-rose-700' : 'text-emerald-700'
+                                }`}
+                              >
+                                {field.missing ? 'missing' : 'loaded'}
+                              </span>
+                            </div>
+                            <p
+                              className={`mt-1 text-[10px] break-all ${
+                                field.missing ? 'text-rose-700' : 'text-slate-500'
+                              }`}
+                            >
+                              {field.missing ? 'No matching Excel column' : field.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 

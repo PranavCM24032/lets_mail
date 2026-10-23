@@ -277,8 +277,38 @@ const getFieldAliases = (key: string): string[] => {
   return FIELD_ALIASES[normalized] || [normalized];
 };
 
+// Built-in fields get sensible defaults even without a matching spreadsheet
+// column, so they must be validated against the recipient data explicitly.
+const FALLBACK_MERGE_FIELDS = [
+  'event',
+  'event_name',
+  'participant_id',
+  'participantid',
+  'id',
+  'login',
+  'login_link',
+  'link',
+  'url'
+];
+
+export function isFallbackMergeField(key: string): boolean {
+  return FALLBACK_MERGE_FIELDS.includes(normalizeFieldKey(key));
+}
+
+/**
+ * Returns the unique `${attribute}` names used in a template. Any spreadsheet
+ * column name is supported, so newly added columns work without code changes.
+ */
+export function extractMergeFields(templateString: string): string[] {
+  const matches = templateString.match(/\$\{[^{}]+\}/g) || [];
+  return Array.from(
+    new Set(matches.map((token) => token.slice(2, -1).trim()).filter(Boolean))
+  );
+}
+
 export function hasRecipientDataField(recipient: Recipient, key: string): boolean {
   if (normalizeFieldKey(key) === 'name' && recipient.name) return true;
+  if (normalizeFieldKey(key) === 'email' && recipient.email) return true;
   const aliases = getFieldAliases(key);
   return Object.entries(recipient.data).some(
     ([dataKey, value]) => value !== '' && aliases.includes(normalizeFieldKey(dataKey))

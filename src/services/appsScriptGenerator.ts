@@ -114,9 +114,9 @@ function onFormSubmit(e) {
 
     Object.keys(dataMap).forEach(key => {
       const val = dataMap[key];
-      const regex = new RegExp("\\\\$\\\\{" + key + "\\\\}", "gi");
-      subject = subject.replace(regex, val);
-      bodyHtml = bodyHtml.replace(regex, val);
+      const token = "\${" + key + "}";
+      subject = subject.split(token).join(val);
+      bodyHtml = bodyHtml.split(token).join(val);
     });
 
     // Check Apps Script remaining daily quota
